@@ -2,7 +2,7 @@ import SettingsTitle from "@/components/settings/settings-title.tsx";
 import { Helmet } from "react-helmet-async";
 import { getAppName } from "@/lib/config.ts";
 import { useTranslation } from "react-i18next";
-import { Button, Group, NumberInput, Stack, Text } from "@mantine/core";
+import { Button, Group, NumberInput, Stack, Switch, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import {
@@ -25,6 +25,8 @@ export default function GallerySettings() {
   const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number>(
     DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
   );
+  const [restrictDeleteToOwners, setRestrictDeleteToOwners] =
+    useState<boolean>(DEFAULT_GALLERY_SETTINGS.restrictDeleteToOwners);
 
   // This page replaces the old settings popover in the Gallery modal,
   // which re-seeded its draft fields every time it opened. There's no
@@ -35,6 +37,7 @@ export default function GallerySettings() {
     setMaxBulkUploadFiles(gallerySettings.maxBulkUploadFiles);
     setDefaultPageSize(gallerySettings.defaultPageSize);
     setRateLimitPerMinute(gallerySettings.rateLimitPerMinute);
+    setRestrictDeleteToOwners(gallerySettings.restrictDeleteToOwners);
   }, [gallerySettings]);
 
   const handleSave = () => {
@@ -43,6 +46,7 @@ export default function GallerySettings() {
         maxBulkUploadFiles,
         defaultPageSize,
         rateLimitPerMinute,
+        restrictDeleteToOwners,
       },
       {
         onSuccess: () => {
@@ -112,6 +116,25 @@ export default function GallerySettings() {
             }
           />
         </div>
+
+        <Group justify="space-between" wrap="nowrap">
+          <div>
+            <Text size="sm" fw={500}>
+              {t("Restrict gallery deletion to owners")}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t(
+                "When enabled, only workspace owners can delete images from the shared Gallery. When disabled, anyone with edit rights in the relevant space can.",
+              )}
+            </Text>
+          </div>
+          <Switch
+            checked={restrictDeleteToOwners}
+            onChange={(e) =>
+              setRestrictDeleteToOwners(e.currentTarget.checked)
+            }
+          />
+        </Group>
 
         <Group justify="flex-end">
           <Button

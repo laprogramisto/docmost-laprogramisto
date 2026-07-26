@@ -12,6 +12,7 @@ export const DEFAULT_GALLERY_SETTINGS = {
   maxBulkUploadFiles: 100,
   defaultPageSize: 60,
   rateLimitPerMinute: 150,
+  restrictDeleteToOwners: false,
 };
 
 export function useGallerySettingsQuery() {

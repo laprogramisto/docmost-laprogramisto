@@ -74,6 +74,7 @@ import {
   AI_CHAT_THROTTLER,
 } from '../../integrations/throttle/throttler-names';
 import { GalleryThrottlerGuard } from '../../integrations/throttle/gallery-throttler.guard';
+import { UserRole } from '../../common/helpers/types/permission';
 
 @Controller()
 export class AttachmentController {
@@ -617,9 +618,48 @@ export class AttachmentController {
       throw new NotFoundException('File not found');
     }
 
-    const spaceAbility = await this.spaceAbility.createForUser(user, attachment.spaceId);
-    if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
-      throw new ForbiddenException();
+    const gallerySettings = await this.attachmentService.getGallerySettings(
+      workspace.id,
+    );
+
+    if (gallerySettings.restrictDeleteToOwners) {
+      // Strict workspace OWNER only — deliberately not isAdmin/ADMIN,
+      // this is a stricter opt-in policy layered on top of the
+      // always-on cross-space check below, not a replacement for it.
+      if (user.role !== UserRole.OWNER) {
+        throw new ForbiddenException();
+      }
+    } else {
+      // deleteImage() clears coverPhoto workspace-wide (see
+      // attachment.service.ts), so a check scoped only to
+      // attachment.spaceId (the space it happened to be uploaded
+      // through) would let a user with edit rights in ONE space break
+      // pages in OTHER spaces they may have no access to at all. Every
+      // space actually using this cover must independently grant
+      // Manage/Page — the attachment's own space is included even if no
+      // page currently uses it there, since that's still where it
+      // "belongs".
+      const affectedSpaceIds = new Set([
+        attachment.spaceId,
+        ...(await this.attachmentRepo.getSpaceIdsUsingAttachment(
+          dto.attachmentId,
+          workspace.id,
+        )),
+      ]);
+
+      for (const spaceId of affectedSpaceIds) {
+        if (!spaceId) continue;
+        const spaceAbility = await this.spaceAbility.createForUser(
+          user,
+          spaceId,
+        );
+        if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
+          // Deliberately the same generic ForbiddenException regardless
+          // of which space blocked the request — never reveal to the
+          // caller that a space they can't see exists.
+          throw new ForbiddenException();
+        }
+      }
     }
 
     await this.attachmentService.deleteImage(dto.attachmentId, workspace.id);

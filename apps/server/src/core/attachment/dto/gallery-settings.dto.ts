@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 // Bounds are deliberately conservative: this protects the workspace admin
 // from misconfiguring their own instance (e.g. a bulk upload limit of 0 or
@@ -23,4 +23,12 @@ export class UpdateGallerySettingsDto {
   @Min(10)
   @Max(1000)
   rateLimitPerMinute?: number;
+
+  // When true, only workspace OWNER (strict — not ADMIN) can delete
+  // covers from the shared Gallery. Independent of the always-on
+  // cross-space blast-radius check in deleteImage(): this is a policy
+  // choice on top of that safety check, not a replacement for it.
+  @IsOptional()
+  @IsBoolean()
+  restrictDeleteToOwners?: boolean;
 }

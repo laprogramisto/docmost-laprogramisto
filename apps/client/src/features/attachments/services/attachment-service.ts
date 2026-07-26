@@ -116,6 +116,7 @@ export interface IGallerySettings {
   maxBulkUploadFiles: number;
   defaultPageSize: number;
   rateLimitPerMinute: number;
+  restrictDeleteToOwners: boolean;
 }
 
 export async function getGallerySettings(): Promise<IGallerySettings> {

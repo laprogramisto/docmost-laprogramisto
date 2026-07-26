@@ -43,6 +43,7 @@ import { downloadFile } from "@/lib/download-file.ts";
 import { generateThumbnail } from "@/lib/generate-thumbnail.ts";
 import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
 import { useSpaceAbility } from "@/features/space/permissions/use-space-ability.ts";
+import useUserRole from "@/hooks/use-user-role.tsx";
 import {
   SpaceCaslAction,
   SpaceCaslSubject,
@@ -115,6 +116,15 @@ export default function GalleryModal({
   const maxBulkFiles =
     gallerySettings?.maxBulkUploadFiles ??
     DEFAULT_GALLERY_SETTINGS.maxBulkUploadFiles;
+  // Deletion is gated more strictly than the rest of the gallery's write
+  // actions when the workspace opts into "restrict gallery deletion to
+  // owners" — same shape of fix as the settings-page gating: don't show a
+  // control the server will 403 on. Selection mode's only purpose today is
+  // enabling bulk delete, so it's gated on the same flag.
+  const { isOwner } = useUserRole();
+  const canDeleteFromGallery =
+    canManageGallery &&
+    (!gallerySettings?.restrictDeleteToOwners || isOwner);
 
   // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
   // its .current is still null on the render where this container first
@@ -177,7 +187,7 @@ export default function GalleryModal({
   // toggles selection — there's no "apply as cover" behaviour to conflict
   // with. In the cover-picker context, that only happens once the user
   // explicitly switches into selection mode via the "Select" button.
-  const isSelectionMode = (!onSelect || pickerSelectionMode) && canManageGallery;
+  const isSelectionMode = (!onSelect || pickerSelectionMode) && canDeleteFromGallery;
 
   // The button that calls this only appears when selectedIds is empty (see
   // the merged Select all / Cancel control below), so this only ever needs
@@ -553,7 +563,7 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" className={classes.toolbarActions}>
-              {onSelect && !pickerSelectionMode && canManageGallery && (
+              {onSelect && !pickerSelectionMode && canDeleteFromGallery && (
                 isMobile ? (
                   <ActionIcon
                     size="input-xs"
@@ -767,7 +777,7 @@ export default function GalleryModal({
                           >
                             <IconDownload size={12} />
                           </ActionIcon>
-                          {canManageGallery && (
+                          {canDeleteFromGallery && (
                             <ActionIcon
                               size="sm"
                               variant="filled"

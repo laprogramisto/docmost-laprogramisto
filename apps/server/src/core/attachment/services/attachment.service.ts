@@ -542,6 +542,7 @@ export class AttachmentService {
     maxBulkUploadFiles: 100,
     defaultPageSize: 60,
     rateLimitPerMinute: 150,
+    restrictDeleteToOwners: false,
   };
 
   async getGallerySettings(workspaceId: string) {
@@ -557,7 +558,12 @@ export class AttachmentService {
 
   async updateGallerySettings(
     workspaceId: string,
-    dto: { maxBulkUploadFiles?: number; defaultPageSize?: number },
+    dto: {
+      maxBulkUploadFiles?: number;
+      defaultPageSize?: number;
+      rateLimitPerMinute?: number;
+      restrictDeleteToOwners?: boolean;
+    },
   ) {
     const workspace = await this.workspaceRepo.findById(workspaceId);
     // Settings is a single JSON blob shared with unrelated features (ai,

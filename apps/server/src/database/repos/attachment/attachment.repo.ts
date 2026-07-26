@@ -218,4 +218,24 @@ export class AttachmentRepo {
     });
   }
 
+  // Used to enforce that deleting a cover from the Gallery requires
+  // Manage/Page rights in every space actually affected, not just the
+  // space it was originally uploaded through — deleteImage() clears
+  // coverPhoto workspace-wide, so a permission check scoped to a single
+  // space would let a user break pages in spaces they can't even see.
+  async getSpaceIdsUsingAttachment(
+    attachmentId: string,
+    workspaceId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('pages')
+      .select('spaceId')
+      .distinct()
+      .where('workspaceId', '=', workspaceId)
+      .where('coverPhoto', 'like', `%/${attachmentId}/%`)
+      .execute();
+
+    return rows.map((r) => r.spaceId);
+  }
+
 }

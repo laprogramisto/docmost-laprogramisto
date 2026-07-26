@@ -1330,5 +1330,7 @@
   "Images per page": "Images per page",
   "Failed to update gallery settings": "Failed to update gallery settings",
   "Requests per minute": "Requests per minute",
-  "Gallery settings saved": "Gallery settings saved"
+  "Gallery settings saved": "Gallery settings saved",
+  "Restrict gallery deletion to owners": "Restrict gallery deletion to owners",
+  "When enabled, only workspace owners can delete images from the shared Gallery. When disabled, anyone with edit rights in the relevant space can.": "When enabled, only workspace owners can delete images from the shared Gallery. When disabled, anyone with edit rights in the relevant space can."
 }
