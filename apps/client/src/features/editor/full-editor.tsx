@@ -58,6 +58,7 @@ export interface FullEditorProps {
   coverPhotoPosition?: number;
   coverPhotoPositionX?: number;
   coverPhotoSize?: string;
+  coverPhotoAlt?: string;
   spaceId?: string;
 }
 
@@ -75,6 +76,7 @@ export function FullEditor({
   coverPhotoPosition,
   coverPhotoPositionX,
   coverPhotoSize,
+  coverPhotoAlt,
   spaceId,
 }: FullEditorProps) {
   const [user] = useAtom(userAtom);
@@ -114,6 +116,7 @@ export function FullEditor({
         coverPhotoPosition={coverPhotoPosition}
         coverPhotoPositionX={coverPhotoPositionX}
         coverPhotoSize={coverPhotoSize}
+        coverPhotoAlt={coverPhotoAlt}
         editable={editable && isEditMode}
         spaceId={spaceId}
       />

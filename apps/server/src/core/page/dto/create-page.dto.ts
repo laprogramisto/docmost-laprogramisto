@@ -6,6 +6,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -41,6 +42,11 @@ export class CreatePageDto {
   @IsOptional()
   @IsIn(['small', 'large'])
   coverPhotoSize?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  coverPhotoAlt?: string;
 
   @IsOptional()
   @IsString()

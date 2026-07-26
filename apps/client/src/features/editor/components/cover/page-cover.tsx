@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Box, ActionIcon, Group, Tooltip, Button } from "@mantine/core";
+import { Box, ActionIcon, Group, Tooltip, Button, Popover, TextInput } from "@mantine/core";
 import {
   IconPhoto,
   IconTrash,
@@ -9,6 +9,7 @@ import {
   IconDownload,
   IconCheck,
   IconX,
+  IconAccessible,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useUpdatePageMutation } from "@/features/page/queries/page-query.ts";
@@ -28,6 +29,7 @@ interface PageCoverProps {
   coverPhotoPosition?: number;
   coverPhotoPositionX?: number;
   coverPhotoSize?: string;
+  coverPhotoAlt?: string;
   editable: boolean;
   spaceId?: string;
 }
@@ -38,6 +40,7 @@ export function PageCover({
   coverPhotoPosition,
   coverPhotoPositionX,
   coverPhotoSize,
+  coverPhotoAlt,
   editable,
   spaceId,
 }: PageCoverProps) {
@@ -49,6 +52,8 @@ export function PageCover({
   const [position, setPosition] = useState<number>(coverPhotoPosition ?? 50);
   const [positionX, setPositionX] = useState<number>(coverPhotoPositionX ?? 50);
   const [isRepositioning, setIsRepositioning] = useState(false);
+  const [altPopoverOpened, setAltPopoverOpened] = useState(false);
+  const [altValue, setAltValue] = useState(coverPhotoAlt ?? "");
 
   // Tracks an in-progress mousedown, before we know yet whether it'll turn
   // into a drag (reposition) or stay a plain click.
@@ -67,6 +72,10 @@ export function PageCover({
   useEffect(() => {
     setPositionX(coverPhotoPositionX ?? 50);
   }, [coverPhotoPositionX]);
+
+  useEffect(() => {
+    setAltValue(coverPhotoAlt ?? "");
+  }, [coverPhotoAlt]);
 
   useEffect(() => {
     if (!editable) return;
@@ -164,6 +173,11 @@ export function PageCover({
     window.URL.revokeObjectURL(url);
   };
 
+  const handleSaveAlt = async () => {
+    await updatePageAsync({ pageId, coverPhotoAlt: altValue.trim() || null });
+    setAltPopoverOpened(false);
+  };
+
   const handleSavePosition = async () => {
     await updatePageAsync({
       pageId,
@@ -223,7 +237,7 @@ export function PageCover({
       >
         <img
           src={getFileUrl(coverPhoto)}
-          alt=""
+          alt={coverPhotoAlt ?? ""}
           className={classes.coverImage}
           style={{
             objectPosition: `${positionX}% ${position}%`,
@@ -258,6 +272,41 @@ export function PageCover({
                     )}
                   </ActionIcon>
                 </Tooltip>
+                <Popover
+                  opened={altPopoverOpened}
+                  onChange={setAltPopoverOpened}
+                  withArrow
+                  position="top"
+                >
+                  <Popover.Target>
+                    <Tooltip label={t("Alt text")}>
+                      <ActionIcon
+                        variant="subtle"
+                        onClick={() => setAltPopoverOpened((o) => !o)}
+                      >
+                        <IconAccessible size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Popover.Target>
+                  <Popover.Dropdown>
+                    <TextInput
+                      size="xs"
+                      w={260}
+                      placeholder={t("Describe this image")}
+                      value={altValue}
+                      onChange={(e) => setAltValue(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveAlt();
+                        if (e.key === "Escape") setAltPopoverOpened(false);
+                      }}
+                      rightSection={
+                        <ActionIcon size="sm" variant="subtle" onClick={handleSaveAlt}>
+                          <IconCheck size={14} />
+                        </ActionIcon>
+                      }
+                    />
+                  </Popover.Dropdown>
+                </Popover>
                 <Tooltip label={t("Change cover")}>
                   <ActionIcon variant="subtle" onClick={() => setPickerOpened(true)}>
                     <IconRefresh size={16} />

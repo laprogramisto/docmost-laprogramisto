@@ -316,6 +316,7 @@ export interface Pages {
   coverPhotoPosition: number | null;
   coverPhotoPositionX: number | null;
   coverPhotoSize: string | null;
+  coverPhotoAlt: string | null;
   createdAt: Generated<Timestamp>;
   creatorId: string | null;
   deletedAt: Timestamp | null;
