@@ -14,7 +14,6 @@ import {
   Tabs,
   ActionIcon,
   LoadingOverlay,
-  Checkbox,
 } from "@mantine/core";
 import {
   IconUpload,
@@ -582,15 +581,6 @@ export default function GalleryModal({
                       <Box className={classes.thumbWrapper}>
                         <LoadingOverlay visible={deletingId === attachment.id} />
                         <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" draggable={false} />
-
-                        <Checkbox
-                          size="sm"
-                          className={classes.checkbox}
-                          data-visible={isSelected || undefined}
-                          checked={isSelected}
-                          onChange={() => toggleSelected(attachment.id)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
 
                         <Group className={classes.actions} gap={4}>
                           <ActionIcon

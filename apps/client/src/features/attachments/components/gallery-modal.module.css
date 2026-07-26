@@ -15,14 +15,6 @@
   overflow: hidden;
 }
 
-.checkbox {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
 .actions {
   position: absolute;
   top: 4px;
@@ -31,11 +23,6 @@
   gap: 4px;
   opacity: 0;
   transition: opacity 150ms ease;
-}
-
-.card:hover .checkbox,
-.checkbox[data-visible] {
-  opacity: 1;
 }
 
 .card:hover .actions {
