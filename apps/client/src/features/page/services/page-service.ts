@@ -207,6 +207,7 @@ export async function uploadFile(
   if (type) {
     formData.append("type", type);
   }
+  formData.append("fileSize", String(file.size));
   formData.append("file", file);
 
   const req = await api.post<IAttachment>("/files/upload", formData, {

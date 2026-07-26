@@ -48,6 +48,7 @@ import {
 import WorkspaceAbilityFactory from '../casl/abilities/workspace-ability.factory';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
+import { prepareFile } from './attachment.utils';
 import { validate as isValidUUID } from 'uuid';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { TokenService } from '../auth/services/token.service';
@@ -150,6 +151,40 @@ export class AttachmentController {
     const attachmentId = file.fields?.attachmentId?.value;
     if (attachmentId && !isValidUUID(attachmentId)) {
       throw new BadRequestException('Invalid attachment id');
+    }
+
+    // Duplicate detection is scoped to covers only — regular file
+    // attachments are legitimately re-uploaded/re-attached across pages
+    // and should never be silently deduplicated.
+    if (attachmentType === AttachmentType.Cover) {
+      const claimedFileSizeField = file.fields?.fileSize?.value;
+      const claimedFileSize = claimedFileSizeField
+        ? Number(claimedFileSizeField)
+        : NaN;
+
+      if (file.filename && !Number.isNaN(claimedFileSize)) {
+        // Match on the same sanitized, 255-char-capped fileName that will
+        // actually end up in the DB — comparing against the raw multipart
+        // filename would silently miss real duplicates whenever
+        // sanitizeFileName changes the name (special characters, length).
+        const preparedFile = await prepareFile(file, { skipBuffer: true });
+
+        const existingCover =
+          await this.attachmentRepo.findExistingCoverAttachment(
+            user.id,
+            workspace.id,
+            preparedFile.fileName,
+            claimedFileSize,
+          );
+
+        if (existingCover) {
+          // Never written to storage, so the incoming stream still needs
+          // to be drained — otherwise the multipart parser is left waiting
+          // for a part that will never be consumed.
+          file.file.resume();
+          return res.send(existingCover);
+        }
+      }
     }
 
     try {
