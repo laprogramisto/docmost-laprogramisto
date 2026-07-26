@@ -1329,5 +1329,6 @@
   "Max files per bulk upload": "Max files per bulk upload",
   "Images per page": "Images per page",
   "Failed to update gallery settings": "Failed to update gallery settings",
-  "Requests per minute": "Requests per minute"
+  "Requests per minute": "Requests per minute",
+  "Gallery settings saved": "Gallery settings saved"
 }

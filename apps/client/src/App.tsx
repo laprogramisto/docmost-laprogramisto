@@ -47,6 +47,7 @@ import FavoritesPage from "@/pages/favorites/favorites-page";
 import AiChat from "@/ee/ai-chat/pages/ai-chat.tsx";
 import VerifyEmail from "@/ee/pages/verify-email.tsx";
 import LabelPage from "@/pages/label/label-page";
+import GallerySettings from "@/pages/settings/gallery/gallery-settings.tsx";
 
 export default function App() {
   const { t } = useTranslation();
@@ -122,6 +123,7 @@ export default function App() {
             <Route path={"groups"} element={<Groups />} />
             <Route path={"groups/:groupId"} element={<GroupInfo />} />
             <Route path={"spaces"} element={<Spaces />} />
+            <Route path={"gallery"} element={<GallerySettings />} />
             <Route path={"sharing"} element={<Shares />} />
             <Route path={"security"} element={<Security />} />
             <Route path={"ai"} element={<AiSettings />} />

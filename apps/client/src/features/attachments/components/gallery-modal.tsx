@@ -5,8 +5,6 @@ import {
   Image,
   Text,
   TextInput,
-  NumberInput,
-  Popover,
   Center,
   Loader,
   Card,
@@ -23,7 +21,6 @@ import {
   IconDownload,
   IconTrash,
   IconPhoto,
-  IconSettings,
   IconCloudUpload,
   IconSearch,
   IconPencil,
@@ -34,7 +31,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useMediaQuery, useIntersection, useDebouncedValue } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { useWorkspaceImagesQuery, useGallerySettingsQuery, useUpdateGallerySettingsMutation, DEFAULT_GALLERY_SETTINGS } from "@/features/attachments/queries/attachment-query.ts";
+import { useWorkspaceImagesQuery, useGallerySettingsQuery, DEFAULT_GALLERY_SETTINGS } from "@/features/attachments/queries/attachment-query.ts";
 import {
   uploadLibraryImage,
   deleteWorkspaceImage,
@@ -46,7 +43,6 @@ import { downloadFile } from "@/lib/download-file.ts";
 import { generateThumbnail } from "@/lib/generate-thumbnail.ts";
 import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
 import { useSpaceAbility } from "@/features/space/permissions/use-space-ability.ts";
-import useUserRole from "@/hooks/use-user-role.tsx";
 import {
   SpaceCaslAction,
   SpaceCaslSubject,
@@ -115,65 +111,10 @@ export default function GalleryModal({
     SpaceCaslAction.Manage,
     SpaceCaslSubject.Page,
   );
-  // Gallery settings (bulk limit, page size, rate limit) are a
-  // WORKSPACE-level setting — the server already requires
-  // WorkspaceCaslAction.Manage/Settings for update-gallery-settings.
-  // canManageGallery above is a SPACE-level right (any space "writer"),
-  // which is correct for upload/delete/rename but too broad for the
-  // settings button: a writer would see the gear, open it, and hit a 403
-  // on save. isAdmin (workspace owner/admin) is the same check already
-  // used for gating workspace-level settings screens elsewhere.
-  const { isAdmin } = useUserRole();
   const { data: gallerySettings } = useGallerySettingsQuery();
   const maxBulkFiles =
     gallerySettings?.maxBulkUploadFiles ??
     DEFAULT_GALLERY_SETTINGS.maxBulkUploadFiles;
-  const updateGallerySettingsMutation = useUpdateGallerySettingsMutation();
-  const [settingsPopoverOpened, setSettingsPopoverOpened] = useState(false);
-  const [draftMaxBulkFiles, setDraftMaxBulkFiles] = useState<number>(
-    maxBulkFiles,
-  );
-  const [draftPageSize, setDraftPageSize] = useState<number>(
-    gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
-  );
-  const [draftRateLimit, setDraftRateLimit] = useState<number>(
-    gallerySettings?.rateLimitPerMinute ??
-      DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
-  );
-
-  const openSettingsPopover = () => {
-    // Re-seed the draft from the latest known values every time the panel
-    // opens, rather than once on mount — otherwise a previous edit made in
-    // another tab/session wouldn't be reflected if the popover happened to
-    // mount before that data arrived.
-    setDraftMaxBulkFiles(maxBulkFiles);
-    setDraftPageSize(
-      gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
-    );
-    setDraftRateLimit(
-      gallerySettings?.rateLimitPerMinute ??
-        DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
-    );
-    setSettingsPopoverOpened(true);
-  };
-
-  const saveGallerySettings = () => {
-    updateGallerySettingsMutation.mutate(
-      {
-        maxBulkUploadFiles: draftMaxBulkFiles,
-        defaultPageSize: draftPageSize,
-        rateLimitPerMinute: draftRateLimit,
-      },
-      {
-        onSuccess: () => setSettingsPopoverOpened(false),
-        onError: () =>
-          notifications.show({
-            color: "red",
-            message: t("Failed to update gallery settings"),
-          }),
-      },
-    );
-  };
 
   // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
   // its .current is still null on the render where this container first
@@ -612,82 +553,6 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" className={classes.toolbarActions}>
-              {isAdmin && (
-                <Popover
-                  opened={settingsPopoverOpened}
-                  onChange={setSettingsPopoverOpened}
-                  withArrow
-                  position="bottom-end"
-                >
-                  <Popover.Target>
-                    <ActionIcon
-                      size="input-xs"
-                      variant="default"
-                      onClick={() =>
-                        settingsPopoverOpened
-                          ? setSettingsPopoverOpened(false)
-                          : openSettingsPopover()
-                      }
-                      aria-label={t("Gallery settings")}
-                    >
-                      <IconSettings size={16} />
-                    </ActionIcon>
-                  </Popover.Target>
-                  <Popover.Dropdown>
-                    <Stack gap="xs" w={260}>
-                      <Text size="sm" fw={500}>
-                        {t("Gallery settings")}
-                      </Text>
-                      <NumberInput
-                        label={t("Max files per bulk upload")}
-                        size="xs"
-                        min={1}
-                        max={500}
-                        value={draftMaxBulkFiles}
-                        onChange={(v) =>
-                          setDraftMaxBulkFiles(typeof v === "number" ? v : 1)
-                        }
-                      />
-                      <NumberInput
-                        label={t("Images per page")}
-                        size="xs"
-                        min={6}
-                        max={200}
-                        value={draftPageSize}
-                        onChange={(v) =>
-                          setDraftPageSize(typeof v === "number" ? v : 6)
-                        }
-                      />
-                      <NumberInput
-                        label={t("Requests per minute")}
-                        size="xs"
-                        min={10}
-                        max={1000}
-                        value={draftRateLimit}
-                        onChange={(v) =>
-                          setDraftRateLimit(typeof v === "number" ? v : 10)
-                        }
-                      />
-                      <Group justify="flex-end" gap="xs" mt="xs">
-                        <Button
-                          size="xs"
-                          variant="default"
-                          onClick={() => setSettingsPopoverOpened(false)}
-                        >
-                          {t("Cancel")}
-                        </Button>
-                        <Button
-                          size="xs"
-                          onClick={saveGallerySettings}
-                          loading={updateGallerySettingsMutation.isPending}
-                        >
-                          {t("Save")}
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Popover.Dropdown>
-                </Popover>
-              )}
               {onSelect && !pickerSelectionMode && canManageGallery && (
                 isMobile ? (
                   <ActionIcon
