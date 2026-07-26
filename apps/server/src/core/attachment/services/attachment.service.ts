@@ -43,7 +43,7 @@ export class AttachmentService {
     @InjectQueue(QueueName.ATTACHMENT_QUEUE) private attachmentQueue: Queue,
   ) {}
 
-async uploadFile(opts: {
+  async uploadFile(opts: {
     filePromise: Promise<MultipartFile>;
     thumbnailFilePromise?: Promise<MultipartFile>;
     pageId?: string;
@@ -284,7 +284,7 @@ async uploadFile(opts: {
       this.logger.error('deleteRedundantFile', error);
     }
   }
-  
+
 
   async uploadToDrive(filePath: string, fileContent: Buffer | Readable) {
     try {
@@ -513,7 +513,7 @@ async uploadFile(opts: {
 
     await this.workspaceRepo.updateWorkspace({ logo: null }, workspace.id);
   }
-  
+
   async deleteImage(attachmentId: string, workspaceId: string) {
     const attachment = await this.attachmentRepo.findById(attachmentId);
 
