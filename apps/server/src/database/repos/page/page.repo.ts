@@ -34,6 +34,7 @@ export class PageRepo {
     'coverPhotoPosition',
     'coverPhotoPositionX',
     'coverPhotoSize',
+    'coverPhotoAlt',
     'position',
     'parentPageId',
     'creatorId',

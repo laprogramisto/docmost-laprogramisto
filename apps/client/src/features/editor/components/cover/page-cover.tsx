@@ -12,8 +12,10 @@ import {
   IconAccessible,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { notifications } from "@mantine/notifications";
 import { useUpdatePageMutation } from "@/features/page/queries/page-query.ts";
 import { getFileUrl } from "@/lib/config.ts";
+import { downloadFile } from "@/lib/download-file.ts";
 import toolbarClasses from "../common/toolbar-menu.module.css";
 import classes from "./page-cover.module.css";
 import GalleryModal from "@/features/attachments/components/gallery-modal.tsx";
@@ -174,17 +176,17 @@ export function PageCover({
   };
 
   const handleDownload = async () => {
-    const res = await fetch(getFileUrl(coverPhoto), { credentials: "include" });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = coverPhoto.split("/").pop() || "cover";
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    try {
+      await downloadFile(
+        getFileUrl(coverPhoto),
+        coverPhoto.split("/").pop() || "cover",
+      );
+    } catch {
+      notifications.show({
+        color: "red",
+        message: t("Failed to download image"),
+      });
+    }
   };
 
   const handleSaveAlt = async () => {

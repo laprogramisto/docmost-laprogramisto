@@ -29,12 +29,14 @@ import { StorageService } from '../../integrations/storage/storage.service';
 import {
   getAttachmentFolderPath,
   validAttachmentTypes,
+  validateFileType,
 } from './attachment.utils';
-import { getMimeType } from '../../common/helpers';
+import { getMimeType, sanitizeFileName } from '../../common/helpers';
 import {
   AttachmentType,
   inlineFileExtensions,
   MAX_AVATAR_SIZE,
+  validImageExtensions,
 } from './attachment.constants';
 import {
   SpaceCaslAction,
@@ -48,7 +50,10 @@ import {
 import WorkspaceAbilityFactory from '../casl/abilities/workspace-ability.factory';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
-import { prepareFile } from './attachment.utils';
+import {
+  DeleteImageDto,
+  RenameImageDto,
+} from './dto/gallery-image.dto';
 import { validate as isValidUUID } from 'uuid';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { TokenService } from '../auth/services/token.service';
@@ -124,6 +129,25 @@ export class AttachmentController {
         ? AttachmentType.Cover
         : AttachmentType.File;
 
+    // The gallery only ever displays these in an <img>, and the client-side
+    // accept="image/*" filter is trivially bypassed with a direct request,
+    // so the extension is checked here too — reusing the same
+    // validateFileType/validImageExtensions already used for avatars and
+    // icons (attachment.utils.ts / attachment.constants.ts), rather than a
+    // separate cover-specific list. Regular file attachments are
+    // deliberately left unrestricted — accepting arbitrary files is an
+    // existing product feature of that endpoint.
+    if (attachmentType === AttachmentType.Cover) {
+      const coverExtension = path.extname(file.filename ?? '').toLowerCase();
+      try {
+        validateFileType(coverExtension, validImageExtensions);
+      } catch {
+        throw new BadRequestException(
+          `Invalid cover image type. Allowed: ${validImageExtensions.join(', ')}`,
+        );
+      }
+    }
+
     let spaceId: string;
 
     if (pageId) {
@@ -151,40 +175,6 @@ export class AttachmentController {
     const attachmentId = file.fields?.attachmentId?.value;
     if (attachmentId && !isValidUUID(attachmentId)) {
       throw new BadRequestException('Invalid attachment id');
-    }
-
-    // Duplicate detection is scoped to covers only — regular file
-    // attachments are legitimately re-uploaded/re-attached across pages
-    // and should never be silently deduplicated.
-    if (attachmentType === AttachmentType.Cover) {
-      const claimedFileSizeField = file.fields?.fileSize?.value;
-      const claimedFileSize = claimedFileSizeField
-        ? Number(claimedFileSizeField)
-        : NaN;
-
-      if (file.filename && !Number.isNaN(claimedFileSize)) {
-        // Match on the same sanitized, 255-char-capped fileName that will
-        // actually end up in the DB — comparing against the raw multipart
-        // filename would silently miss real duplicates whenever
-        // sanitizeFileName changes the name (special characters, length).
-        const preparedFile = await prepareFile(file, { skipBuffer: true });
-
-        const existingCover =
-          await this.attachmentRepo.findExistingCoverAttachment(
-            user.id,
-            workspace.id,
-            preparedFile.fileName,
-            claimedFileSize,
-          );
-
-        if (existingCover) {
-          // Never written to storage, so the incoming stream still needs
-          // to be drained — otherwise the multipart parser is left waiting
-          // for a part that will never be consumed.
-          file.file.resume();
-          return res.send(existingCover);
-        }
-      }
     }
 
     try {
@@ -555,7 +545,7 @@ export class AttachmentController {
   @HttpCode(HttpStatus.OK)
   @Post('attachments/delete-image')
   async deleteImage(
-    @Body() dto: { attachmentId: string },
+    @Body() dto: DeleteImageDto,
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
   ) {
@@ -591,7 +581,7 @@ export class AttachmentController {
   @HttpCode(HttpStatus.OK)
   @Post('attachments/rename-image')
   async renameImage(
-    @Body() dto: { attachmentId: string; fileName: string },
+    @Body() dto: RenameImageDto,
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
   ) {
@@ -609,7 +599,10 @@ export class AttachmentController {
       throw new ForbiddenException();
     }
 
-    const trimmedName = dto.fileName?.trim();
+    // Renames go through the same sanitization as uploads
+    // (attachment.utils.ts) so a cover's stored fileName follows one set of
+    // rules whichever path produced it. Length is capped by the DTO.
+    const trimmedName = sanitizeFileName(dto.fileName).trim();
     if (!trimmedName) {
       throw new BadRequestException('File name is required');
     }

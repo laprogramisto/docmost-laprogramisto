@@ -1,9 +1,9 @@
 .coverWrapper {
   position: relative;
   width: 100%;
-  margin-bottom: 1rem;
+  margin-bottom: var(--mantine-spacing-md);
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: var(--mantine-radius-sm);
 }
 
 .coverImage {
@@ -15,6 +15,6 @@
 
 .coverActions {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
+  bottom: var(--mantine-spacing-xs);
+  right: var(--mantine-spacing-xs);
 }

@@ -58,6 +58,28 @@ export function validateFileType(
   }
 }
 
+// Leading bytes ("magic numbers") for the two formats currently covered by
+// validImageExtensions (.jpg/.jpeg/.png). Extension checks alone are
+// trivially defeated by renaming an arbitrary file, so this inspects the
+// actual content instead. Kept deliberately in lockstep with
+// validImageExtensions — add a signature here if that list ever grows.
+const IMAGE_SIGNATURES: Buffer[] = [
+  Buffer.from([0xff, 0xd8, 0xff]), // JPEG
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), // PNG
+];
+
+export function validateImageSignature(buffer: Buffer) {
+  const matches = IMAGE_SIGNATURES.some(
+    (signature) =>
+      buffer.length >= signature.length &&
+      buffer.subarray(0, signature.length).equals(signature),
+  );
+
+  if (!matches) {
+    throw new Error('File content does not match a supported image format');
+  }
+}
+
 export function getAttachmentFolderPath(
   type: AttachmentType,
   workspaceId: string,

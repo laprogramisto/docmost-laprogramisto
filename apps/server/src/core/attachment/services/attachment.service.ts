@@ -13,6 +13,7 @@ import {
   PreparedFile,
   prepareFile,
   validateFileType,
+  validateImageSignature,
 } from '../attachment.utils';
 import { v4 as uuid4, v7 as uuid7 } from 'uuid';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
@@ -52,9 +53,24 @@ async uploadFile(opts: {
     type?: AttachmentType;
   }) {
     const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
+    const isCover = opts.type === AttachmentType.Cover;
+
+    // Covers are buffered rather than streamed — same buffered pattern
+    // uploadImage() already uses below for avatars/icons, not a new upload
+    // path — so the content can be checked before anything reaches storage.
+    // Regular file attachments keep the existing stream + byte-counting
+    // path untouched.
     const preparedFile: PreparedFile = await prepareFile(filePromise, {
-      skipBuffer: true,
+      skipBuffer: !isCover,
     });
+
+    if (isCover) {
+      // The extension is already checked in attachment.controller.ts;
+      // this additionally confirms the bytes themselves look like one of
+      // the allowed image formats, since a renamed non-image file would
+      // otherwise pass an extension-only check.
+      validateImageSignature(preparedFile.buffer);
+    }
 
     let isUpdate = false;
     let attachmentId = null;
@@ -86,14 +102,19 @@ async uploadFile(opts: {
 
     const filePath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
 
-    const { stream, getBytesRead } = createByteCountingStream(
-      preparedFile.multiPartFile.file,
-    );
+    if (isCover) {
+      await this.uploadToDrive(filePath, preparedFile.buffer);
+      // fileSize was already set by prepareFile when it read the buffer.
+    } else {
+      const { stream, getBytesRead } = createByteCountingStream(
+        preparedFile.multiPartFile.file,
+      );
 
-    await this.uploadToDrive(filePath, stream);
+      await this.uploadToDrive(filePath, stream);
 
-    // Update fileSize from the consumed stream
-    preparedFile.fileSize = getBytesRead();
+      // Update fileSize from the consumed stream
+      preparedFile.fileSize = getBytesRead();
+    }
 
     let attachment: Attachment = null;
     try {
