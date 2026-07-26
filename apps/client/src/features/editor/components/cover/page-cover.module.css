@@ -1,0 +1,17 @@
+.coverWrapper {
+  position: relative;
+  width: 100%;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.coverImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.coverActions {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+}

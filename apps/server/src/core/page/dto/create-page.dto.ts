@@ -1,9 +1,12 @@
 import {
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  Min,
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -18,6 +21,20 @@ export class CreatePageDto {
   @IsOptional()
   @IsString()
   icon?: string;
+
+  @IsOptional()
+  @IsString()
+  coverPhoto?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  coverPhotoPosition?: number;
+
+  @IsOptional()
+  @IsIn(['small', 'large'])
+  coverPhotoSize?: string;
 
   @IsOptional()
   @IsString()

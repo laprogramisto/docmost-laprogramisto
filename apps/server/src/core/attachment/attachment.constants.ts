@@ -4,6 +4,7 @@ export enum AttachmentType {
   SpaceIcon = 'space-icon',
   File = 'file',
   Chat = 'chat',
+  Cover = 'cover',
 }
 
 export const validImageExtensions = ['.jpg', '.png', '.jpeg'];

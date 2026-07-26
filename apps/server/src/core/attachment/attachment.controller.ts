@@ -60,6 +60,7 @@ import {
   AUDIT_SERVICE,
   IAuditService,
 } from '../../integrations/audit/audit.service';
+import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
 
 @Controller()
 export class AttachmentController {
@@ -104,25 +105,40 @@ export class AttachmentController {
       }
     }
 
-    if (!file) {
+if (!file) {
       throw new BadRequestException('Failed to upload file');
     }
 
     const pageId = file.fields?.pageId?.value;
+    const attachmentTypeField = file.fields?.type?.value;
+    const attachmentType =
+      attachmentTypeField === AttachmentType.Cover
+        ? AttachmentType.Cover
+        : AttachmentType.File;
 
-    if (!pageId) {
-      throw new BadRequestException('PageId is required');
+    let spaceId: string;
+
+    if (pageId) {
+      const page = await this.pageRepo.findById(pageId);
+
+      if (!page) {
+        throw new NotFoundException('Page not found');
+      }
+
+      await this.pageAccessService.validateCanEdit(page, user);
+      spaceId = page.spaceId;
+    } else {
+      spaceId = file.fields?.spaceId?.value;
+
+      if (!spaceId) {
+        throw new BadRequestException('pageId or spaceId is required');
+      }
+
+      const spaceAbility = await this.spaceAbility.createForUser(user, spaceId);
+      if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
+        throw new ForbiddenException();
+      }
     }
-
-    const page = await this.pageRepo.findById(pageId);
-
-    if (!page) {
-      throw new NotFoundException('Page not found');
-    }
-
-    await this.pageAccessService.validateCanEdit(page, user);
-
-    const spaceId = page.spaceId;
 
     const attachmentId = file.fields?.attachmentId?.value;
     if (attachmentId && !isValidUUID(attachmentId)) {
@@ -137,6 +153,7 @@ export class AttachmentController {
         userId: user.id,
         workspaceId: workspace.id,
         attachmentId: attachmentId,
+        type: attachmentType,
       });
 
       this.auditService.log({
@@ -189,18 +206,28 @@ export class AttachmentController {
       if (attachment.creatorId !== user.id) {
         throw new NotFoundException();
       }
-    } else {
-      if (!attachment.pageId || !attachment.spaceId) {
-        throw new NotFoundException();
-      }
+      } else {
+            if (!attachment.spaceId) {
+              throw new NotFoundException();
+            }
 
-      const page = await this.pageRepo.findById(attachment.pageId);
-      if (!page) {
-        throw new NotFoundException();
-      }
+            if (attachment.pageId) {
+              const page = await this.pageRepo.findById(attachment.pageId);
+              if (!page) {
+                throw new NotFoundException();
+              }
 
-      await this.pageAccessService.validateCanView(page, user);
-    }
+              await this.pageAccessService.validateCanView(page, user);
+            } else {
+              const spaceAbility = await this.spaceAbility.createForUser(
+                user,
+                attachment.spaceId,
+              );
+              if (spaceAbility.cannot(SpaceCaslAction.Read, SpaceCaslSubject.Page)) {
+                throw new NotFoundException();
+              }
+            }
+          }
 
     try {
       return await this.sendFileResponse(req, res, attachment, 'private');
@@ -412,6 +439,76 @@ export class AttachmentController {
     await this.pageAccessService.validateCanView(page, user);
 
     return attachment;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('attachments/list-images')
+  async listImages(
+    @Body() pagination: PaginationOptions,
+    @AuthUser() user: User,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    return this.attachmentRepo.getWorkspaceImages(
+      user.id,
+      workspace.id,
+      pagination,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('attachments/delete-image')
+  async deleteImage(
+    @Body() dto: { attachmentId: string },
+    @AuthUser() user: User,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const attachment = await this.attachmentRepo.findById(dto.attachmentId);
+    if (
+      !attachment ||
+      attachment.workspaceId !== workspace.id ||
+      attachment.type !== AttachmentType.Cover
+    ) {
+      throw new NotFoundException('File not found');
+    }
+
+    const spaceAbility = await this.spaceAbility.createForUser(user, attachment.spaceId);
+    if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
+      throw new ForbiddenException();
+    }
+
+    await this.attachmentService.deleteImage(dto.attachmentId, workspace.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('attachments/rename-image')
+  async renameImage(
+    @Body() dto: { attachmentId: string; fileName: string },
+    @AuthUser() user: User,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const attachment = await this.attachmentRepo.findById(dto.attachmentId);
+    if (
+      !attachment ||
+      attachment.workspaceId !== workspace.id ||
+      attachment.type !== AttachmentType.Cover
+    ) {
+      throw new NotFoundException('File not found');
+    }
+
+    const spaceAbility = await this.spaceAbility.createForUser(user, attachment.spaceId);
+    if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
+      throw new ForbiddenException();
+    }
+
+    const trimmedName = dto.fileName?.trim();
+    if (!trimmedName) {
+      throw new BadRequestException('File name is required');
+    }
+
+    return this.attachmentRepo.updateAttachment({ fileName: trimmedName }, dto.attachmentId);
   }
 
   @UseGuards(JwtAuthGuard)

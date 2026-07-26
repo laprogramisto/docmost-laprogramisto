@@ -8,10 +8,16 @@ import {
   UpdatableAttachment,
 } from '@docmost/db/types/entity.types';
 import { AttachmentType } from '../../../core/attachment/attachment.constants';
+import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
+import { executeWithCursorPagination } from '@docmost/db/pagination/cursor-pagination';
+import { SpaceMemberRepo } from '@docmost/db/repos/space/space-member.repo';
 
 @Injectable()
 export class AttachmentRepo {
-  constructor(@InjectKysely() private readonly db: KyselyDB) {}
+  constructor(
+    @InjectKysely() private readonly db: KyselyDB,
+    private spaceMemberRepo: SpaceMemberRepo,
+  ) {}
 
   private baseFields: Array<keyof Attachment> = [
     'id',
@@ -177,4 +183,33 @@ export class AttachmentRepo {
       .where('filePath', '=', attachmentFilePath)
       .executeTakeFirst();
   }
+
+  async getWorkspaceImages(
+    userId: string,
+    workspaceId: string,
+    pagination: PaginationOptions,
+  ) {
+    const query = this.db
+      .selectFrom('attachments')
+      .select(this.baseFields)
+      .where('workspaceId', '=', workspaceId)
+      .where('spaceId', 'in', this.spaceMemberRepo.getUserSpaceIdsQuery(userId))
+      .where('type', '=', 'cover')
+      .where('deletedAt', 'is', null);
+
+    return executeWithCursorPagination(query, {
+      perPage: pagination.limit,
+      cursor: pagination.cursor,
+      beforeCursor: pagination.beforeCursor,
+      fields: [
+        { expression: 'createdAt', direction: 'desc' },
+        { expression: 'id', direction: 'desc' },
+      ],
+      parseCursor: (cursor) => ({
+        createdAt: new Date(cursor.createdAt),
+        id: cursor.id,
+      }),
+    });
+  }
+
 }

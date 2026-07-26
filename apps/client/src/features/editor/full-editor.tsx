@@ -27,6 +27,7 @@ import { DeletedPageBanner } from "@/features/page/trash/components/deleted-page
 import clsx from "clsx";
 import { currentPageEditModeAtom } from "@/features/editor/atoms/editor-atoms.ts";
 import { EmptyPageGetStarted } from "@/features/editor/components/empty-page/empty-page-get-started";
+import { PageCover } from "@/features/editor/components/cover/page-cover.tsx";
 
 const MemoizedTitleEditor = React.memo(TitleEditor);
 const MemoizedPageEditor = React.memo(PageEditor);
@@ -53,6 +54,10 @@ export interface FullEditorProps {
   creator?: PageUser;
   contributors?: IContributor[];
   canComment?: boolean;
+  coverPhoto?: string;
+  coverPhotoPosition?: number;
+  coverPhotoSize?: string;
+  spaceId?: string;
 }
 
 export function FullEditor({
@@ -65,6 +70,10 @@ export function FullEditor({
   creator,
   contributors,
   canComment,
+  coverPhoto,
+  coverPhotoPosition,
+  coverPhotoSize,
+  spaceId,
 }: FullEditorProps) {
   const [user] = useAtom(userAtom);
   const fullPageWidth = user.settings?.preferences?.fullPageWidth;
@@ -97,6 +106,14 @@ export function FullEditor({
         <MemoizedFixedToolbar />
       )}
       <MemoizedDeletedPageBanner slugId={slugId} />
+      <PageCover
+        pageId={pageId}
+        coverPhoto={coverPhoto}
+        coverPhotoPosition={coverPhotoPosition}
+        coverPhotoSize={coverPhotoSize}
+        editable={editable && isEditMode}
+        spaceId={spaceId}
+      />
       <MemoizedTitleEditor
         pageId={pageId}
         slugId={slugId}

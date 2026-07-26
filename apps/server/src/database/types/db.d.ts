@@ -295,6 +295,7 @@ export interface PageHistory {
   content: Json | null;
   contributorIds: Generated<string[] | null>;
   coverPhoto: string | null;
+  coverPhotoPosition: number | null;
   createdAt: Generated<Timestamp>;
   icon: string | null;
   id: Generated<string>;
@@ -313,6 +314,8 @@ export interface Pages {
   content: Json | null;
   contributorIds: Generated<string[] | null>;
   coverPhoto: string | null;
+  coverPhotoPosition: number | null;
+  coverPhotoSize: string | null;
   createdAt: Generated<Timestamp>;
   creatorId: string | null;
   deletedAt: Timestamp | null;

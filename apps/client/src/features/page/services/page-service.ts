@@ -197,12 +197,16 @@ export async function uploadFile(
   file: File,
   pageId: string,
   attachmentId?: string,
+  type?: string,
 ): Promise<IAttachment> {
   const formData = new FormData();
   if (attachmentId) {
     formData.append("attachmentId", attachmentId);
   }
   formData.append("pageId", pageId);
+  if (type) {
+    formData.append("type", type);
+  }
   formData.append("file", file);
 
   const req = await api.post<IAttachment>("/files/upload", formData, {

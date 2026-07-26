@@ -20,6 +20,7 @@ import {
   IconStarFilled,
   IconTemplate,
   IconTrash,
+  IconPhoto,
 } from "@tabler/icons-react";
 import {
   useSpaceWatchStatusQuery,
@@ -59,11 +60,15 @@ import { useHasFeature } from "@/ee/hooks/use-feature";
 import { useUpgradeLabel } from "@/ee/hooks/use-upgrade-label";
 import { Feature } from "@/ee/features";
 import { ErrorBoundary } from "react-error-boundary";
+import GalleryModal from "@/features/attachments/components/gallery-modal.tsx";
+
 
 export function SpaceSidebar() {
   const { t } = useTranslation();
   const location = useLocation();
   const [opened, { open: openSettings, close: closeSettings }] =
+    useDisclosure(false);
+  const [galleryOpened, { open: openGallery, close: closeGallery }] =
     useDisclosure(false);
   const [mobileSidebarOpened] = useAtom(mobileSidebarAtom);
   const toggleMobileSidebar = useToggleSidebar(mobileSidebarAtom);
@@ -141,6 +146,17 @@ export function SpaceSidebar() {
                   stroke={2}
                 />
                 <span>{t("Search")}</span>
+              </div>
+            </UnstyledButton>
+
+            <UnstyledButton className={classes.menu} onClick={openGallery}>
+              <div className={classes.menuItemInner}>
+                <IconPhoto
+                  size={18}
+                  className={classes.menuItemIcon}
+                  stroke={2}
+                />
+                <span>{t("Gallery")}</span>
               </div>
             </UnstyledButton>
 
@@ -232,6 +248,13 @@ export function SpaceSidebar() {
         onClose={closeSettings}
         spaceId={space?.slug}
       />
+
+      <GalleryModal
+        opened={galleryOpened}
+        onClose={closeGallery}
+        spaceId={space?.id}
+      />
+      
     </>
   );
 }

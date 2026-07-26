@@ -1,3 +1,4 @@
+import * as path from 'path';
 import {
   BadRequestException,
   Injectable,
@@ -41,13 +42,14 @@ export class AttachmentService {
     @InjectQueue(QueueName.ATTACHMENT_QUEUE) private attachmentQueue: Queue,
   ) {}
 
-  async uploadFile(opts: {
+async uploadFile(opts: {
     filePromise: Promise<MultipartFile>;
     pageId?: string;
     userId: string;
     spaceId: string;
     workspaceId: string;
     attachmentId?: string;
+    type?: AttachmentType;
   }) {
     const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
     const preparedFile: PreparedFile = await prepareFile(filePromise, {
@@ -108,7 +110,7 @@ export class AttachmentService {
           attachmentId,
           preparedFile,
           filePath,
-          type: AttachmentType.File,
+          type: opts.type ?? AttachmentType.File,
           userId,
           spaceId,
           workspaceId,
@@ -239,6 +241,7 @@ export class AttachmentService {
       this.logger.error('deleteRedundantFile', error);
     }
   }
+  
 
   async uploadToDrive(filePath: string, fileContent: Buffer | Readable) {
     try {
@@ -276,7 +279,7 @@ export class AttachmentService {
         id: attachmentId,
         type: type,
         filePath: filePath,
-        fileName: preparedFile.fileName,
+        fileName: path.basename(preparedFile.fileName, preparedFile.fileExtension),
         fileSize: preparedFile.fileSize,
         mimeType: preparedFile.mimeType,
         fileExt: preparedFile.fileExtension,
@@ -460,5 +463,25 @@ export class AttachmentService {
     }
 
     await this.workspaceRepo.updateWorkspace({ logo: null }, workspace.id);
+  }
+  
+  async deleteImage(attachmentId: string, workspaceId: string) {
+    const attachment = await this.attachmentRepo.findById(attachmentId);
+
+    if (!attachment || attachment.workspaceId !== workspaceId) {
+      throw new NotFoundException('File not found');
+    }
+
+    // Clear this cover from any page currently using it, so removing it
+    // from the library never leaves a broken image on a page.
+    await this.db
+      .updateTable('pages')
+      .set({ coverPhoto: null, coverPhotoPosition: null, coverPhotoSize: null })
+      .where('workspaceId', '=', workspaceId)
+      .where('coverPhoto', 'like', `%/${attachmentId}/%`)
+      .execute();
+
+    await this.storageService.delete(attachment.filePath);
+    await this.attachmentRepo.deleteAttachmentById(attachmentId);
   }
 }

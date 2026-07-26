@@ -159,7 +159,8 @@
     "moduleFileExtensions": [
       "js",
       "json",
-      "ts"
+      "ts",
+      "tsx"
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
@@ -179,23 +180,25 @@
           ]
         }
       ],
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)sx?$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "/node_modules/(?!(\\.pnpm/)?(nanoid|uuid|image-dimensions|marked|happy-dom)(@|/))"
+      "/node_modules/(?!(\\.pnpm/)?(nanoid|uuid|image-dimensions|marked|happy-dom|@sindresorhus[+/][\\w-]+|escape-string-regexp|p-limit|yocto-queue)(@|/))"
     ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
+    "forceExit": true,
     "moduleNameMapper": {
       "^@docmost/db/(.*)$": "<rootDir>/database/$1",
       "^@docmost/transactional/(.*)$": "<rootDir>/integrations/transactional/$1",
       "^@docmost/ee/(.*)$": "<rootDir>/ee/$1",
       "^src/(.*)$": "<rootDir>/$1",
       "^@docmost/base-formula/server$": "<rootDir>/../../../packages/base-formula/src/index.server.ts",
-      "^@docmost/base-formula/client$": "<rootDir>/../../../packages/base-formula/src/index.client.ts"
+      "^@docmost/base-formula/client$": "<rootDir>/../../../packages/base-formula/src/index.client.ts",
+      "^@docmost/editor-ext$": "<rootDir>/../../../packages/editor-ext/dist/index.js"
     }
   }
 }

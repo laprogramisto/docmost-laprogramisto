@@ -176,6 +176,10 @@ function PageContent({ pageSlug }: { pageSlug: string | undefined }) {
           creator={page.creator}
           contributors={page.contributors}
           canComment={canComment}
+          coverPhoto={page.coverPhoto}
+          coverPhotoPosition={page.coverPhotoPosition}
+          coverPhotoSize={page.coverPhotoSize}
+          spaceId={page.spaceId}
         />
         <MemoizedHistoryModal pageId={page.id} />
       </div>
