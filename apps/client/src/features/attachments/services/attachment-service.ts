@@ -120,6 +120,7 @@ export async function uploadLibraryImage(
   const formData = new FormData();
   formData.append("spaceId", spaceId);
   formData.append("type", "cover");
+  formData.append("fileSize", String(file.size));
   formData.append("file", file);
 
   const req = await api.post("/files/upload", formData, {
