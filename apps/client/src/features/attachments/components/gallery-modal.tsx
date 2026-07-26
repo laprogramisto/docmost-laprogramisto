@@ -510,17 +510,17 @@ export default function GalleryModal({
               </Text>
             </Box>
           )}
-          <Group justify="space-between" mb="sm" wrap="nowrap">
+          <Group justify="space-between" mb="sm" wrap="nowrap" className={classes.toolbar}>
             <TextInput
               placeholder={t("Search images")}
               leftSection={<IconSearch size={14} />}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.currentTarget.value)}
               size="xs"
-              style={{ flex: 1, maxWidth: 280 }}
+              className={classes.searchInput}
             />
 
-            <Group gap="xs" wrap="nowrap">
+            <Group gap="xs" wrap="nowrap" className={classes.toolbarActions}>
               {onSelect && !pickerSelectionMode && (
                 <Button
                   size="xs"
@@ -601,7 +601,7 @@ export default function GalleryModal({
 
           {!isLoading && filteredItems.length > 0 && (
             <>
-              <SimpleGrid cols={6} spacing="sm">
+              <SimpleGrid cols={{ base: 2, xs: 3, sm: 4, md: 6 }} spacing="sm">
                 {filteredItems.map((attachment, index) => {
                   const url = `/api/files/${attachment.id}/${attachment.fileName}`;
                   const isSelected = selectedIds.has(attachment.id);
