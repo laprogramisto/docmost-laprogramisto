@@ -581,7 +581,7 @@ export default function GalleryModal({
                     >
                       <Box className={classes.thumbWrapper}>
                         <LoadingOverlay visible={deletingId === attachment.id} />
-                        <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" />
+                        <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" draggable={false} />
 
                         <Checkbox
                           size="sm"
