@@ -580,7 +580,7 @@ export default function GalleryModal({
                     >
                       <Box className={classes.thumbWrapper}>
                         <LoadingOverlay visible={deletingId === attachment.id} />
-                        <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" draggable={false} />
+                        <Image src={getFileUrl(url)} alt={attachment.fileName} radius="sm" h={100} fit="cover" draggable={false} />
 
                         <Group className={classes.actions} gap={4}>
                           <ActionIcon

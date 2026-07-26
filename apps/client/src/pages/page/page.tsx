@@ -180,6 +180,7 @@ function PageContent({ pageSlug }: { pageSlug: string | undefined }) {
           coverPhotoPosition={page.coverPhotoPosition}
           coverPhotoPositionX={page.coverPhotoPositionX}
           coverPhotoSize={page.coverPhotoSize}
+          coverPhotoAlt={page.coverPhotoAlt}
           spaceId={page.spaceId}
         />
         <MemoizedHistoryModal pageId={page.id} />

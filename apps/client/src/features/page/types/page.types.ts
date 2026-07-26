@@ -10,6 +10,7 @@ export interface IPage {
   coverPhotoPosition: number;
   coverPhotoPositionX: number;
   coverPhotoSize: string;
+  coverPhotoAlt: string;
   parentPageId: string;
   creatorId: string;
   spaceId: string;
@@ -91,6 +92,7 @@ export interface IPageInput {
   coverPhotoPosition: number;
   coverPhotoPositionX: number;
   coverPhotoSize: string;
+  coverPhotoAlt: string;
   position: string;
   isLocked: boolean;
 }
