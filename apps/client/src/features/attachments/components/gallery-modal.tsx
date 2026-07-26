@@ -38,6 +38,7 @@ import {
 import { uploadFile } from "@/features/page/services/page-service.ts";
 import { getFileUrl } from "@/lib/config.ts";
 import { notifications } from "@mantine/notifications";
+import { modals } from "@mantine/modals";
 import classes from "./gallery-modal.module.css";
 
 const MAX_BULK_FILES = 100;
@@ -219,7 +220,7 @@ export default function GalleryModal({
     }
   };
 
-  const handleDelete = async (attachmentId: string) => {
+  const performDelete = async (attachmentId: string) => {
     setDeletingId(attachmentId);
     try {
       await deleteWorkspaceImage(attachmentId);
@@ -240,7 +241,22 @@ export default function GalleryModal({
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleDelete = (attachmentId: string) => {
+    modals.openConfirmModal({
+      title: t("Delete this image?"),
+      children: (
+        <Text size="sm">
+          {t("This will permanently delete the image. This action is irreversible.")}
+        </Text>
+      ),
+      centered: true,
+      labels: { confirm: t("Delete"), cancel: t("Cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => performDelete(attachmentId),
+    });
+  };
+
+  const performBulkDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
 
@@ -262,6 +278,24 @@ export default function GalleryModal({
     setBulkDeleting(false);
     clearSelection();
     invalidate();
+  };
+
+  const handleBulkDelete = () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+
+    modals.openConfirmModal({
+      title: t("Delete {{count}} image(s)?", { count }),
+      children: (
+        <Text size="sm">
+          {t("This will permanently delete the selected images. This action is irreversible.")}
+        </Text>
+      ),
+      centered: true,
+      labels: { confirm: t("Delete"), cancel: t("Cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: performBulkDelete,
+    });
   };
 
   const startEditing = (attachmentId: string, currentName: string) => {
