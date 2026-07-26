@@ -513,6 +513,7 @@ async uploadFile(opts: {
   private static readonly DEFAULT_GALLERY_SETTINGS = {
     maxBulkUploadFiles: 100,
     defaultPageSize: 60,
+    rateLimitPerMinute: 150,
   };
 
   async getGallerySettings(workspaceId: string) {

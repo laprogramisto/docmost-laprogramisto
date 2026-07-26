@@ -125,6 +125,10 @@ export default function GalleryModal({
   const [draftPageSize, setDraftPageSize] = useState<number>(
     gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
   );
+  const [draftRateLimit, setDraftRateLimit] = useState<number>(
+    gallerySettings?.rateLimitPerMinute ??
+      DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
+  );
 
   const openSettingsPopover = () => {
     // Re-seed the draft from the latest known values every time the panel
@@ -135,6 +139,10 @@ export default function GalleryModal({
     setDraftPageSize(
       gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
     );
+    setDraftRateLimit(
+      gallerySettings?.rateLimitPerMinute ??
+        DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
+    );
     setSettingsPopoverOpened(true);
   };
 
@@ -143,6 +151,7 @@ export default function GalleryModal({
       {
         maxBulkUploadFiles: draftMaxBulkFiles,
         defaultPageSize: draftPageSize,
+        rateLimitPerMinute: draftRateLimit,
       },
       {
         onSuccess: () => setSettingsPopoverOpened(false),
@@ -308,29 +317,11 @@ export default function GalleryModal({
       files = files.slice(0, maxBulkFiles);
     }
 
-    // Duplicate check only covers images already loaded on the client
-    // (the pages fetched so far), not the entire workspace if there are
-    // more pages beyond what's currently loaded.
-    const existing = new Set(allItems.map((i) => `${i.fileName}:${i.fileSize}`));
     const toUpload: File[] = [];
-    let skipped = 0;
 
     for (const file of files) {
       if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) continue;
-      const key = `${file.name}:${file.size}`;
-      if (existing.has(key)) {
-        skipped++;
-        continue;
-      }
-      existing.add(key);
       toUpload.push(file);
-    }
-
-    if (skipped > 0) {
-      notifications.show({
-        color: "gray",
-        message: t("{{count}} duplicate images skipped", { count: skipped }),
-      });
     }
 
     if (toUpload.length === 0) return;
@@ -602,7 +593,7 @@ export default function GalleryModal({
               className={classes.searchInput}
             />
 
-            <Group gap="xs" wrap="nowrap" className={classes.toolbarActions}>
+            <Group gap="xs" className={classes.toolbarActions}>
               {canManageGallery && (
                 <Popover
                   opened={settingsPopoverOpened}
@@ -612,7 +603,7 @@ export default function GalleryModal({
                 >
                   <Popover.Target>
                     <ActionIcon
-                      size="lg"
+                      size="input-xs"
                       variant="default"
                       onClick={() =>
                         settingsPopoverOpened
@@ -649,6 +640,16 @@ export default function GalleryModal({
                           setDraftPageSize(typeof v === "number" ? v : 6)
                         }
                       />
+                      <NumberInput
+                        label={t("Requests per minute")}
+                        size="xs"
+                        min={10}
+                        max={1000}
+                        value={draftRateLimit}
+                        onChange={(v) =>
+                          setDraftRateLimit(typeof v === "number" ? v : 10)
+                        }
+                      />
                       <Group justify="flex-end" gap="xs" mt="xs">
                         <Button
                           size="xs"
@@ -670,15 +671,25 @@ export default function GalleryModal({
                 </Popover>
               )}
               {onSelect && !pickerSelectionMode && canManageGallery && (
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconSquareCheck size={14} />}
-                  onClick={() => setPickerSelectionMode(true)}
-                  aria-label={isMobile ? t("Select") : undefined}
-                >
-                  {!isMobile && t("Select")}
-                </Button>
+                isMobile ? (
+                  <ActionIcon
+                    size="input-xs"
+                    variant="default"
+                    onClick={() => setPickerSelectionMode(true)}
+                    aria-label={t("Select")}
+                  >
+                    <IconSquareCheck size={14} />
+                  </ActionIcon>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconSquareCheck size={14} />}
+                    onClick={() => setPickerSelectionMode(true)}
+                  >
+                    {t("Select")}
+                  </Button>
+                )
               )}
               {isSelectionMode && (
                 <>
@@ -689,29 +700,39 @@ export default function GalleryModal({
                       clearing the selection and exiting selection mode in
                       one action rather than exposing two separate buttons
                       that overlapped once everything was selected. */}
-                  <Button
-                    size="xs"
-                    variant="default"
-                    leftSection={
-                      selectedIds.size > 0 ? (
+                  {isMobile ? (
+                    <ActionIcon
+                      size="input-xs"
+                      variant="default"
+                      onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
+                      disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                      aria-label={
+                        selectedIds.size > 0 ? t("Cancel") : t("Select all")
+                      }
+                    >
+                      {selectedIds.size > 0 ? (
                         <IconX size={14} />
                       ) : (
                         <IconSquareCheck size={14} />
-                      )
-                    }
-                    onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
-                    disabled={selectedIds.size === 0 && filteredItems.length === 0}
-                    aria-label={
-                      isMobile
-                        ? selectedIds.size > 0
-                          ? t("Cancel")
-                          : t("Select all")
-                        : undefined
-                    }
-                  >
-                    {!isMobile &&
-                      (selectedIds.size > 0 ? t("Cancel") : t("Select all"))}
-                  </Button>
+                      )}
+                    </ActionIcon>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="default"
+                      leftSection={
+                        selectedIds.size > 0 ? (
+                          <IconX size={14} />
+                        ) : (
+                          <IconSquareCheck size={14} />
+                        )
+                      }
+                      onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
+                      disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                    >
+                      {selectedIds.size > 0 ? t("Cancel") : t("Select all")}
+                    </Button>
+                  )}
                   {selectedIds.size > 0 && (
                     <Button
                       size="xs"
@@ -735,30 +756,49 @@ export default function GalleryModal({
                 </>
               )}
               {uploading && (
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconX size={14} />}
-                  onClick={cancelUpload}
-                  aria-label={isMobile ? t("Cancel") : undefined}
-                >
-                  {!isMobile && t("Cancel")}
-                </Button>
+                isMobile ? (
+                  <ActionIcon
+                    size="input-xs"
+                    variant="default"
+                    onClick={cancelUpload}
+                    aria-label={t("Cancel")}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconX size={14} />}
+                    onClick={cancelUpload}
+                  >
+                    {t("Cancel")}
+                  </Button>
+                )
               )}
               {canManageGallery && (
                 <>
-                  <Button
-                    size="xs"
-                    leftSection={<IconUpload size={14} />}
-                    onClick={() => inputRef.current?.click()}
-                    loading={uploading}
-                    disabled={uploading}
-                    aria-label={isMobile && !uploading ? t("Upload images") : undefined}
-                  >
-                    {uploading
-                      ? `${progress.done}/${progress.total}`
-                      : !isMobile && t("Upload images")}
-                  </Button>
+                  {isMobile && !uploading ? (
+                    <ActionIcon
+                      size="input-xs"
+                      onClick={() => inputRef.current?.click()}
+                      aria-label={t("Upload images")}
+                    >
+                      <IconUpload size={14} />
+                    </ActionIcon>
+                  ) : (
+                    <Button
+                      size="xs"
+                      leftSection={<IconUpload size={14} />}
+                      onClick={() => inputRef.current?.click()}
+                      loading={uploading}
+                      disabled={uploading}
+                    >
+                      {uploading
+                        ? `${progress.done}/${progress.total}`
+                        : t("Upload images")}
+                    </Button>
+                  )}
                   <input
                     ref={inputRef}
                     type="file"

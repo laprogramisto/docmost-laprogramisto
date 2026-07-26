@@ -1324,11 +1324,10 @@
   "Delete {{count}} images?_other": "Delete {{count}} images?",
   "Delete {{count}} images_one": "Delete 1 image",
   "Delete {{count}} images_other": "Delete {{count}} images",
-  "{{count}} duplicate images skipped_one": "중복된 이미지 {{count}}개를 건너뛰었습니다",
-  "{{count}} duplicate images skipped_other": "중복된 이미지 {{count}}개를 건너뛰었습니다",
   "Failed to download image": "Failed to download image",
   "Gallery settings": "Gallery settings",
   "Max files per bulk upload": "Max files per bulk upload",
   "Images per page": "Images per page",
-  "Failed to update gallery settings": "Failed to update gallery settings"
+  "Failed to update gallery settings": "Failed to update gallery settings",
+  "Requests per minute": "Requests per minute"
 }

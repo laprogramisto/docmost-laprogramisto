@@ -17,4 +17,10 @@ export class UpdateGallerySettingsDto {
   @Min(6)
   @Max(200)
   defaultPageSize?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(1000)
+  rateLimitPerMinute?: number;
 }

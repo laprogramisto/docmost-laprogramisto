@@ -115,6 +115,7 @@ export async function getWorkspaceImages(
 export interface IGallerySettings {
   maxBulkUploadFiles: number;
   defaultPageSize: number;
+  rateLimitPerMinute: number;
 }
 
 export async function getGallerySettings(): Promise<IGallerySettings> {
