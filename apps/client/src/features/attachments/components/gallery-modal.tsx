@@ -93,7 +93,13 @@ export default function GalleryModal({
   onSelect,
 }: GalleryModalProps) {
   const { t } = useTranslation();
-  const { data, isLoading } = useWorkspaceImagesQuery();
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useWorkspaceImagesQuery();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadTabInputRef = useRef<HTMLInputElement>(null);
@@ -109,7 +115,9 @@ export default function GalleryModal({
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["workspace-images"] });
 
-  const filteredItems = (data?.items ?? []).filter((item) =>
+  const allItems = (data?.pages ?? []).flatMap((page) => page.items);
+
+  const filteredItems = allItems.filter((item) =>
     item.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
@@ -143,9 +151,10 @@ export default function GalleryModal({
       files = files.slice(0, MAX_BULK_FILES);
     }
 
-    const existing = new Set(
-      (data?.items ?? []).map((i) => `${i.fileName}:${i.fileSize}`),
-    );
+    // Duplicate check only covers images already loaded on the client
+    // (the pages fetched so far), not the entire workspace if there are
+    // more pages beyond what's currently loaded.
+    const existing = new Set(allItems.map((i) => `${i.fileName}:${i.fileSize}`));
     const toUpload: File[] = [];
     let skipped = 0;
 
@@ -360,118 +369,133 @@ export default function GalleryModal({
           )}
 
           {!isLoading && filteredItems.length > 0 && (
-            <SimpleGrid cols={6} spacing="sm">
-              {filteredItems.map((attachment) => {
-                const url = `/api/files/${attachment.id}/${attachment.fileName}`;
-                const isSelected = selectedIds.has(attachment.id);
-                const isEditing = editingId === attachment.id;
+            <>
+              <SimpleGrid cols={6} spacing="sm">
+                {filteredItems.map((attachment) => {
+                  const url = `/api/files/${attachment.id}/${attachment.fileName}`;
+                  const isSelected = selectedIds.has(attachment.id);
+                  const isEditing = editingId === attachment.id;
 
-                return (
-                  <Card
-                    key={attachment.id}
-                    p={0}
-                    radius="sm"
-                    className={classes.card}
-                    data-selected={isSelected || undefined}
-                    style={onSelect ? { cursor: "pointer" } : undefined}
-                    onClick={
-                      onSelect
-                        ? () => {
-                            if (selectedIds.size > 0) {
-                              toggleSelected(attachment.id);
-                              return;
+                  return (
+                    <Card
+                      key={attachment.id}
+                      p={0}
+                      radius="sm"
+                      className={classes.card}
+                      data-selected={isSelected || undefined}
+                      style={onSelect ? { cursor: "pointer" } : undefined}
+                      onClick={
+                        onSelect
+                          ? () => {
+                              if (selectedIds.size > 0) {
+                                toggleSelected(attachment.id);
+                                return;
+                              }
+                              onSelect(url);
+                              onClose();
                             }
-                            onSelect(url);
-                            onClose();
-                          }
-                        : undefined
-                    }
-                  >
-                    <Box className={classes.thumbWrapper}>
-                      <LoadingOverlay visible={deletingId === attachment.id} />
-                      <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" />
+                          : undefined
+                      }
+                    >
+                      <Box className={classes.thumbWrapper}>
+                        <LoadingOverlay visible={deletingId === attachment.id} />
+                        <Image src={getFileUrl(url)} radius="sm" h={100} fit="cover" />
 
-                      <Checkbox
-                        size="sm"
-                        className={classes.checkbox}
-                        data-visible={isSelected || undefined}
-                        checked={isSelected}
-                        onChange={() => toggleSelected(attachment.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-
-                      <Group className={classes.actions} gap={4}>
-                        <ActionIcon
+                        <Checkbox
                           size="sm"
-                          variant="filled"
-                          color="dark"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            downloadFile(getFileUrl(url), attachment.fileName);
-                          }}
-                        >
-                          <IconDownload size={12} />
-                        </ActionIcon>
-                        <ActionIcon
-                          size="sm"
-                          variant="filled"
-                          color="red"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(attachment.id);
-                          }}
-                        >
-                          <IconTrash size={12} />
-                        </ActionIcon>
-                      </Group>
-                    </Box>
-
-                    {isEditing ? (
-                      <Group gap={2} px={2} pb={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
-                        <TextInput
-                          size="xs"
-                          autoFocus
-                          value={editingValue}
-                          onChange={(e) => setEditingValue(e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEditing(attachment.id);
-                            if (e.key === "Escape") cancelEditing();
-                          }}
-                          style={{ flex: 1 }}
+                          className={classes.checkbox}
+                          data-visible={isSelected || undefined}
+                          checked={isSelected}
+                          onChange={() => toggleSelected(attachment.id)}
+                          onClick={(e) => e.stopPropagation()}
                         />
-                        <ActionIcon size="sm" variant="subtle" onClick={() => saveEditing(attachment.id)}>
-                          <IconCheck size={14} />
-                        </ActionIcon>
-                        <ActionIcon size="sm" variant="subtle" onClick={cancelEditing}>
-                          <IconX size={14} />
-                        </ActionIcon>
-                      </Group>
-                    ) : (
-                      <Group
-                        gap={2}
-                        px={2}
-                        pb={2}
-                        wrap="nowrap"
-                        className={classes.nameRow}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
-                          {attachment.fileName}
-                        </Text>
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          className={classes.editButton}
-                          onClick={() => startEditing(attachment.id, attachment.fileName)}
+
+                        <Group className={classes.actions} gap={4}>
+                          <ActionIcon
+                            size="sm"
+                            variant="filled"
+                            color="dark"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadFile(getFileUrl(url), attachment.fileName);
+                            }}
+                          >
+                            <IconDownload size={12} />
+                          </ActionIcon>
+                          <ActionIcon
+                            size="sm"
+                            variant="filled"
+                            color="red"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(attachment.id);
+                            }}
+                          >
+                            <IconTrash size={12} />
+                          </ActionIcon>
+                        </Group>
+                      </Box>
+
+                      {isEditing ? (
+                        <Group gap={2} px={2} pb={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+                          <TextInput
+                            size="xs"
+                            autoFocus
+                            value={editingValue}
+                            onChange={(e) => setEditingValue(e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveEditing(attachment.id);
+                              if (e.key === "Escape") cancelEditing();
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                          <ActionIcon size="sm" variant="subtle" onClick={() => saveEditing(attachment.id)}>
+                            <IconCheck size={14} />
+                          </ActionIcon>
+                          <ActionIcon size="sm" variant="subtle" onClick={cancelEditing}>
+                            <IconX size={14} />
+                          </ActionIcon>
+                        </Group>
+                      ) : (
+                        <Group
+                          gap={2}
+                          px={2}
+                          pb={2}
+                          wrap="nowrap"
+                          className={classes.nameRow}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <IconPencil size={12} />
-                        </ActionIcon>
-                      </Group>
-                    )}
-                  </Card>
-                );
-              })}
-            </SimpleGrid>
+                          <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
+                            {attachment.fileName}
+                          </Text>
+                          <ActionIcon
+                            size="sm"
+                            variant="subtle"
+                            className={classes.editButton}
+                            onClick={() => startEditing(attachment.id, attachment.fileName)}
+                          >
+                            <IconPencil size={12} />
+                          </ActionIcon>
+                        </Group>
+                      )}
+                    </Card>
+                  );
+                })}
+              </SimpleGrid>
+
+              {hasNextPage && !searchQuery && (
+                <Center mt="md">
+                  <Button
+                    variant="default"
+                    size="xs"
+                    onClick={() => fetchNextPage()}
+                    loading={isFetchingNextPage}
+                  >
+                    {t("Load more")}
+                  </Button>
+                </Center>
+              )}
+            </>
           )}
         </Tabs.Panel>
 
