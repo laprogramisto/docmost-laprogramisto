@@ -46,6 +46,7 @@ import { downloadFile } from "@/lib/download-file.ts";
 import { generateThumbnail } from "@/lib/generate-thumbnail.ts";
 import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
 import { useSpaceAbility } from "@/features/space/permissions/use-space-ability.ts";
+import useUserRole from "@/hooks/use-user-role.tsx";
 import {
   SpaceCaslAction,
   SpaceCaslSubject,
@@ -114,6 +115,15 @@ export default function GalleryModal({
     SpaceCaslAction.Manage,
     SpaceCaslSubject.Page,
   );
+  // Gallery settings (bulk limit, page size, rate limit) are a
+  // WORKSPACE-level setting — the server already requires
+  // WorkspaceCaslAction.Manage/Settings for update-gallery-settings.
+  // canManageGallery above is a SPACE-level right (any space "writer"),
+  // which is correct for upload/delete/rename but too broad for the
+  // settings button: a writer would see the gear, open it, and hit a 403
+  // on save. isAdmin (workspace owner/admin) is the same check already
+  // used for gating workspace-level settings screens elsewhere.
+  const { isAdmin } = useUserRole();
   const { data: gallerySettings } = useGallerySettingsQuery();
   const maxBulkFiles =
     gallerySettings?.maxBulkUploadFiles ??
@@ -602,7 +612,7 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" className={classes.toolbarActions}>
-              {canManageGallery && (
+              {isAdmin && (
                 <Popover
                   opened={settingsPopoverOpened}
                   onChange={setSettingsPopoverOpened}
