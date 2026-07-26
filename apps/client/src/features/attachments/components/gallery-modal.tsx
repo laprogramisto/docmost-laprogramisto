@@ -26,8 +26,10 @@ import {
   IconPencil,
   IconCheck,
   IconX,
+  IconSquareCheck,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { useMediaQuery } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceImagesQuery } from "@/features/attachments/queries/attachment-query.ts";
 import {
@@ -96,6 +98,7 @@ export default function GalleryModal({
   onSelect,
 }: GalleryModalProps) {
   const { t } = useTranslation();
+  const isMobile = useMediaQuery("(max-width: 47.99em)");
   const {
     data,
     isLoading,
@@ -525,9 +528,11 @@ export default function GalleryModal({
                 <Button
                   size="xs"
                   variant="default"
+                  leftSection={<IconSquareCheck size={14} />}
                   onClick={() => setPickerSelectionMode(true)}
+                  aria-label={isMobile ? t("Select") : undefined}
                 >
-                  {t("Select")}
+                  {!isMobile && t("Select")}
                 </Button>
               )}
               {isSelectionMode && (
@@ -542,10 +547,25 @@ export default function GalleryModal({
                   <Button
                     size="xs"
                     variant="default"
+                    leftSection={
+                      selectedIds.size > 0 ? (
+                        <IconX size={14} />
+                      ) : (
+                        <IconSquareCheck size={14} />
+                      )
+                    }
                     onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
                     disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                    aria-label={
+                      isMobile
+                        ? selectedIds.size > 0
+                          ? t("Cancel")
+                          : t("Select all")
+                        : undefined
+                    }
                   >
-                    {selectedIds.size > 0 ? t("Cancel") : t("Select all")}
+                    {!isMobile &&
+                      (selectedIds.size > 0 ? t("Cancel") : t("Select all"))}
                   </Button>
                   {selectedIds.size > 0 && (
                     <Button
@@ -554,17 +574,30 @@ export default function GalleryModal({
                       leftSection={<IconTrash size={14} />}
                       onClick={handleBulkDelete}
                       loading={bulkDeleting}
+                      aria-label={
+                        isMobile
+                          ? t("Delete {{count}} image(s)", { count: selectedIds.size })
+                          : undefined
+                      }
                     >
                       {bulkDeleting
                         ? `${progress.done}/${progress.total}`
-                        : t("Delete ({{count}})", { count: selectedIds.size })}
+                        : isMobile
+                          ? selectedIds.size
+                          : t("Delete ({{count}})", { count: selectedIds.size })}
                     </Button>
                   )}
                 </>
               )}
               {uploading && (
-                <Button size="xs" variant="default" onClick={cancelUpload}>
-                  {t("Cancel")}
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconX size={14} />}
+                  onClick={cancelUpload}
+                  aria-label={isMobile ? t("Cancel") : undefined}
+                >
+                  {!isMobile && t("Cancel")}
                 </Button>
               )}
               <Button
@@ -573,8 +606,11 @@ export default function GalleryModal({
                 onClick={() => inputRef.current?.click()}
                 loading={uploading}
                 disabled={uploading}
+                aria-label={isMobile && !uploading ? t("Upload images") : undefined}
               >
-                {uploading ? `${progress.done}/${progress.total}` : t("Upload images")}
+                {uploading
+                  ? `${progress.done}/${progress.total}`
+                  : !isMobile && t("Upload images")}
               </Button>
               <input
                 ref={inputRef}
@@ -601,7 +637,7 @@ export default function GalleryModal({
 
           {!isLoading && filteredItems.length > 0 && (
             <>
-              <SimpleGrid cols={{ base: 2, xs: 3, sm: 4, md: 6 }} spacing="sm">
+              <SimpleGrid cols={{ base: 1, xs: 2, sm: 4, md: 6 }} spacing="sm">
                 {filteredItems.map((attachment, index) => {
                   const url = `/api/files/${attachment.id}/${attachment.fileName}`;
                   const isSelected = selectedIds.has(attachment.id);

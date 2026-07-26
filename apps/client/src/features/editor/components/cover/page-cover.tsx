@@ -80,7 +80,7 @@ export function PageCover({
   useEffect(() => {
     if (!editable) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!dragState.current) return;
       const deltaX = e.clientX - dragState.current.startX;
       const deltaY = e.clientY - dragState.current.startY;
@@ -113,22 +113,36 @@ export function PageCover({
       setPositionX(nextX);
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       dragState.current = null;
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    // pointercancel fires when the browser interrupts the gesture (e.g. it
+    // decides mid-drag that the touch is actually a page scroll) — without
+    // handling it the same as pointerup, dragState could get stuck as if a
+    // drag were still in progress.
+    window.addEventListener("pointercancel", handlePointerUp);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
     };
   }, [editable]);
 
-  const handleImageMouseDown = (e: React.MouseEvent) => {
+  const handleImagePointerDown = (e: React.PointerEvent) => {
     if (!editable) return;
-    // Only the left mouse button starts a potential drag.
-    if (e.button !== 0) return;
+    // Mouse: only the primary (left) button starts a potential drag.
+    // Touch/pen have no meaningful "button" value — isPrimary marks the
+    // first active contact point instead.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (!e.isPrimary) return;
+
+    // Keeps this element as the event target for the rest of the gesture
+    // even if the finger/cursor moves outside its bounds mid-drag — without
+    // this, a fast touch drag can lose pointermove events partway through.
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
     dragState.current = {
       startX: e.clientX,
@@ -272,9 +286,10 @@ export function PageCover({
           style={{
             objectPosition: `${positionX}% ${position}%`,
             cursor: editable ? "grab" : "default",
+            touchAction: editable ? "none" : undefined,
           }}
           draggable={false}
-          onMouseDown={handleImageMouseDown}
+          onPointerDown={handleImagePointerDown}
         />
         {editable && (
           <Group className={`${toolbarClasses.toolbar} ${classes.coverActions}`} gap={2}>
