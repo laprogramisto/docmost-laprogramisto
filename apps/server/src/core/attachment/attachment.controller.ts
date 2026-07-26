@@ -55,6 +55,7 @@ import {
   RenameImageDto,
 } from './dto/gallery-image.dto';
 import { UpdateGallerySettingsDto } from './dto/gallery-settings.dto';
+import { ListGalleryImagesDto } from './dto/gallery-list.dto';
 import { validate as isValidUUID } from 'uuid';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { TokenService } from '../auth/services/token.service';
@@ -67,7 +68,6 @@ import {
   AUDIT_SERVICE,
   IAuditService,
 } from '../../integrations/audit/audit.service';
-import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
 import { SkipThrottle } from '@nestjs/throttler';
 import {
   AUTH_THROTTLER,
@@ -530,14 +530,15 @@ export class AttachmentController {
   @HttpCode(HttpStatus.OK)
   @Post('attachments/list-images')
   async listImages(
-    @Body() pagination: PaginationOptions,
+    @Body() dto: ListGalleryImagesDto,
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
   ) {
     return this.attachmentRepo.getWorkspaceImages(
       user.id,
       workspace.id,
-      pagination,
+      { cursor: dto.cursor, beforeCursor: dto.beforeCursor, limit: dto.limit },
+      dto.query,
     );
   }
 

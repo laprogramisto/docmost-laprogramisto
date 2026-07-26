@@ -33,13 +33,14 @@ export function useUpdateGallerySettingsMutation() {
   });
 }
 
-export function useWorkspaceImagesQuery(pageSize?: number) {
+export function useWorkspaceImagesQuery(pageSize?: number, query?: string) {
   return useInfiniteQuery({
-    queryKey: ["workspace-images"],
+    queryKey: ["workspace-images", query ?? ""],
     queryFn: ({ pageParam }) =>
       getWorkspaceImages({
         cursor: pageParam,
         limit: pageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
+        query,
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>

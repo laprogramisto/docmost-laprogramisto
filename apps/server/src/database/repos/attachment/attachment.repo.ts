@@ -188,8 +188,9 @@ export class AttachmentRepo {
     userId: string,
     workspaceId: string,
     pagination: PaginationOptions,
+    query?: string,
   ) {
-    const query = this.db
+    let dbQuery = this.db
       .selectFrom('attachments')
       .select(this.baseFields)
       .where('workspaceId', '=', workspaceId)
@@ -197,7 +198,11 @@ export class AttachmentRepo {
       .where('type', '=', 'cover')
       .where('deletedAt', 'is', null);
 
-    return executeWithCursorPagination(query, {
+    if (query) {
+      dbQuery = dbQuery.where('fileName', 'ilike', `%${query}%`);
+    }
+
+    return executeWithCursorPagination(dbQuery, {
       perPage: pagination.limit,
       cursor: pagination.cursor,
       beforeCursor: pagination.beforeCursor,

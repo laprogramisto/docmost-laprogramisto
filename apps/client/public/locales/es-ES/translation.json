@@ -1326,5 +1326,9 @@
   "Delete {{count}} images_other": "Delete {{count}} images",
   "{{count}} duplicate images skipped_one": "{{count}} imagen(es) duplicada(s) omitida(s)",
   "{{count}} duplicate images skipped_other": "{{count}} imagen(es) duplicada(s) omitida(s)",
-  "Failed to download image": "Failed to download image"
+  "Failed to download image": "Failed to download image",
+  "Gallery settings": "Gallery settings",
+  "Max files per bulk upload": "Max files per bulk upload",
+  "Images per page": "Images per page",
+  "Failed to update gallery settings": "Failed to update gallery settings"
 }
