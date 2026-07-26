@@ -611,7 +611,7 @@ export default function GalleryModal({
               className={classes.searchInput}
             />
 
-            <Group gap="xs" wrap="nowrap" className={classes.toolbarActions}>
+            <Group gap="xs" className={classes.toolbarActions}>
               {canManageGallery && (
                 <Popover
                   opened={settingsPopoverOpened}
@@ -621,7 +621,7 @@ export default function GalleryModal({
                 >
                   <Popover.Target>
                     <ActionIcon
-                      size="lg"
+                      size="xs"
                       variant="default"
                       onClick={() =>
                         settingsPopoverOpened
