@@ -178,6 +178,7 @@ function PageContent({ pageSlug }: { pageSlug: string | undefined }) {
           canComment={canComment}
           coverPhoto={page.coverPhoto}
           coverPhotoPosition={page.coverPhotoPosition}
+          coverPhotoPositionX={page.coverPhotoPositionX}
           coverPhotoSize={page.coverPhotoSize}
           spaceId={page.spaceId}
         />
