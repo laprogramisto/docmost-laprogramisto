@@ -57,12 +57,14 @@ async function runWithConcurrency<T>(
   items: T[],
   limit: number,
   worker: (item: T) => Promise<void>,
+  signal?: AbortSignal,
 ) {
   let index = 0;
   const runners = new Array(Math.min(limit, items.length))
     .fill(null)
     .map(async () => {
       while (index < items.length) {
+        if (signal?.aborted) return;
         const current = items[index++];
         await worker(current);
       }
@@ -112,6 +114,7 @@ export default function GalleryModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["workspace-images"] });
@@ -178,26 +181,45 @@ export default function GalleryModal({
 
     if (toUpload.length === 0) return;
 
+    const controller = new AbortController();
+    uploadAbortControllerRef.current = controller;
+
     setUploading(true);
     setProgress({ done: 0, total: toUpload.length });
 
-    await runWithConcurrency(toUpload, UPLOAD_CONCURRENCY, async (file) => {
-      try {
-        const attachment = await uploadLibraryImage(file, spaceId);
-        if (!attachment?.id) {
-          throw new Error("Empty response");
+    await runWithConcurrency(
+      toUpload,
+      UPLOAD_CONCURRENCY,
+      async (file) => {
+        try {
+          const attachment = await uploadLibraryImage(file, spaceId, controller.signal);
+          if (!attachment?.id) {
+            throw new Error("Empty response");
+          }
+        } catch (err: any) {
+          // A deliberate cancellation isn't a failure worth a notification
+          // per file — the "cancelled" state is already communicated once
+          // via the button itself.
+          if (err?.code === "ERR_CANCELED" || controller.signal.aborted) {
+            return;
+          }
+          notifications.show({
+            color: "red",
+            message: err?.response?.data?.message ?? t("Failed to upload {{name}}", { name: file.name }),
+          });
         }
-      } catch (err: any) {
-        notifications.show({
-          color: "red",
-          message: err?.response?.data?.message ?? t("Failed to upload {{name}}", { name: file.name }),
-        });
-      }
-      setProgress((p) => ({ ...p, done: p.done + 1 }));
-    });
+        setProgress((p) => ({ ...p, done: p.done + 1 }));
+      },
+      controller.signal,
+    );
 
+    uploadAbortControllerRef.current = null;
     setUploading(false);
     invalidate();
+  };
+
+  const cancelUpload = () => {
+    uploadAbortControllerRef.current?.abort();
   };
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,10 +249,12 @@ export default function GalleryModal({
     processFiles(files);
   };
 
-  const handleUploadTabFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+  const processSingleCoverUpload = async (file?: File) => {
     if (!file || !pageId) return;
+    if (!file.type.includes("image/")) {
+      notifications.show({ color: "red", message: t("Please select an image file") });
+      return;
+    }
 
     try {
       const attachment = await uploadFile(file, pageId, undefined, "cover");
@@ -244,6 +268,30 @@ export default function GalleryModal({
         message: err?.response?.data?.message ?? t("Failed to upload cover"),
       });
     }
+  };
+
+  const handleUploadTabFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    processSingleCoverUpload(file);
+  };
+
+  const [isDraggingSingle, setIsDraggingSingle] = useState(false);
+
+  const handleSingleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isDraggingSingle) setIsDraggingSingle(true);
+  };
+
+  const handleSingleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.currentTarget === e.target) setIsDraggingSingle(false);
+  };
+
+  const handleSingleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingSingle(false);
+    processSingleCoverUpload(e.dataTransfer?.files?.[0]);
   };
 
   const performDelete = async (attachmentId: string) => {
@@ -411,11 +459,17 @@ export default function GalleryModal({
                   </Button>
                 </>
               )}
+              {uploading && (
+                <Button size="xs" variant="default" onClick={cancelUpload}>
+                  {t("Cancel")}
+                </Button>
+              )}
               <Button
                 size="xs"
                 leftSection={<IconUpload size={14} />}
                 onClick={() => inputRef.current?.click()}
                 loading={uploading}
+                disabled={uploading}
               >
                 {uploading ? `${progress.done}/${progress.total}` : t("Upload images")}
               </Button>
@@ -574,8 +628,22 @@ export default function GalleryModal({
         </Tabs.Panel>
 
         {onSelect && pageId && (
-          <Tabs.Panel value="upload" pt="md">
-            <Center py="xl">
+          <Tabs.Panel
+            value="upload"
+            pt="md"
+            onDragOver={handleSingleDragOver}
+            onDragLeave={handleSingleDragLeave}
+            onDrop={handleSingleDrop}
+            className={`${classes.panel} ${isDraggingSingle ? classes.dropzoneActive : ""}`}
+          >
+            <Center py="xl" style={{ position: "relative", width: "100%" }}>
+              {isDraggingSingle && (
+                <Box className={classes.dropzoneOverlay}>
+                  <Text size="sm" fw={500}>
+                    {t("Drop an image to set as cover")}
+                  </Text>
+                </Box>
+              )}
               <Button
                 leftSection={<IconCloudUpload size={16} />}
                 onClick={() => uploadTabInputRef.current?.click()}
