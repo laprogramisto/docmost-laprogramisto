@@ -106,7 +106,7 @@ export async function removeWorkspaceIcon(): Promise<void> {
 }
 
 export async function getWorkspaceImages(
-  pagination?: { limit?: number; cursor?: string },
+  pagination?: { limit?: number; cursor?: string; query?: string },
 ): Promise<import("@/lib/types.ts").IPagination<IAttachment>> {
   const req = await api.post("/attachments/list-images", pagination);
   return req.data;

@@ -5,6 +5,8 @@ import {
   Image,
   Text,
   TextInput,
+  NumberInput,
+  Popover,
   Center,
   Loader,
   Card,
@@ -21,6 +23,7 @@ import {
   IconDownload,
   IconTrash,
   IconPhoto,
+  IconSettings,
   IconCloudUpload,
   IconSearch,
   IconPencil,
@@ -29,9 +32,9 @@ import {
   IconSquareCheck,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { useMediaQuery, useIntersection } from "@mantine/hooks";
+import { useMediaQuery, useIntersection, useDebouncedValue } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { useWorkspaceImagesQuery, useGallerySettingsQuery, DEFAULT_GALLERY_SETTINGS } from "@/features/attachments/queries/attachment-query.ts";
+import { useWorkspaceImagesQuery, useGallerySettingsQuery, useUpdateGallerySettingsMutation, DEFAULT_GALLERY_SETTINGS } from "@/features/attachments/queries/attachment-query.ts";
 import {
   uploadLibraryImage,
   deleteWorkspaceImage,
@@ -114,6 +117,44 @@ export default function GalleryModal({
   const maxBulkFiles =
     gallerySettings?.maxBulkUploadFiles ??
     DEFAULT_GALLERY_SETTINGS.maxBulkUploadFiles;
+  const updateGallerySettingsMutation = useUpdateGallerySettingsMutation();
+  const [settingsPopoverOpened, setSettingsPopoverOpened] = useState(false);
+  const [draftMaxBulkFiles, setDraftMaxBulkFiles] = useState<number>(
+    maxBulkFiles,
+  );
+  const [draftPageSize, setDraftPageSize] = useState<number>(
+    gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
+  );
+
+  const openSettingsPopover = () => {
+    // Re-seed the draft from the latest known values every time the panel
+    // opens, rather than once on mount — otherwise a previous edit made in
+    // another tab/session wouldn't be reflected if the popover happened to
+    // mount before that data arrived.
+    setDraftMaxBulkFiles(maxBulkFiles);
+    setDraftPageSize(
+      gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
+    );
+    setSettingsPopoverOpened(true);
+  };
+
+  const saveGallerySettings = () => {
+    updateGallerySettingsMutation.mutate(
+      {
+        maxBulkUploadFiles: draftMaxBulkFiles,
+        defaultPageSize: draftPageSize,
+      },
+      {
+        onSuccess: () => setSettingsPopoverOpened(false),
+        onError: () =>
+          notifications.show({
+            color: "red",
+            message: t("Failed to update gallery settings"),
+          }),
+      },
+    );
+  };
+
   // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
   // its .current is still null on the render where this container first
   // mounts, so the observer would be created against the wrong root (or
@@ -121,13 +162,18 @@ export default function GalleryModal({
   // attached, and useIntersection re-creates its observer with the real
   // element.
   const [gridScrollEl, setGridScrollEl] = useState<HTMLDivElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  // Debounced before it ever reaches the server — searching now hits the
+  // database on every change instead of filtering an already-loaded page
+  // client-side, so this avoids a request per keystroke.
+  const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
   const {
     data,
     isLoading,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useWorkspaceImagesQuery(gallerySettings?.defaultPageSize);
+  } = useWorkspaceImagesQuery(gallerySettings?.defaultPageSize, debouncedSearchQuery);
   const { ref: loadMoreSentinelRef, entry: loadMoreEntry } = useIntersection({
     root: gridScrollEl,
     rootMargin: "200px",
@@ -151,7 +197,6 @@ export default function GalleryModal({
   // bulk delete/download stays reachable even while picking a cover.
   const [pickerSelectionMode, setPickerSelectionMode] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -162,9 +207,10 @@ export default function GalleryModal({
 
   const allItems = (data?.pages ?? []).flatMap((page) => page.items);
 
-  const filteredItems = allItems.filter((item) =>
-    item.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // Filtering now happens server-side (attachment.repo.ts, ilike on
+  // fileName) — allItems already reflects the current search. Kept as its
+  // own name rather than renaming every downstream reference to it.
+  const filteredItems = allItems;
 
   // In the standalone gallery (no onSelect), clicking a thumbnail always
   // toggles selection — there's no "apply as cover" behaviour to conflict
@@ -557,6 +603,72 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" wrap="nowrap" className={classes.toolbarActions}>
+              {canManageGallery && (
+                <Popover
+                  opened={settingsPopoverOpened}
+                  onChange={setSettingsPopoverOpened}
+                  withArrow
+                  position="bottom-end"
+                >
+                  <Popover.Target>
+                    <ActionIcon
+                      size="lg"
+                      variant="default"
+                      onClick={() =>
+                        settingsPopoverOpened
+                          ? setSettingsPopoverOpened(false)
+                          : openSettingsPopover()
+                      }
+                      aria-label={t("Gallery settings")}
+                    >
+                      <IconSettings size={16} />
+                    </ActionIcon>
+                  </Popover.Target>
+                  <Popover.Dropdown>
+                    <Stack gap="xs" w={260}>
+                      <Text size="sm" fw={500}>
+                        {t("Gallery settings")}
+                      </Text>
+                      <NumberInput
+                        label={t("Max files per bulk upload")}
+                        size="xs"
+                        min={1}
+                        max={500}
+                        value={draftMaxBulkFiles}
+                        onChange={(v) =>
+                          setDraftMaxBulkFiles(typeof v === "number" ? v : 1)
+                        }
+                      />
+                      <NumberInput
+                        label={t("Images per page")}
+                        size="xs"
+                        min={6}
+                        max={200}
+                        value={draftPageSize}
+                        onChange={(v) =>
+                          setDraftPageSize(typeof v === "number" ? v : 6)
+                        }
+                      />
+                      <Group justify="flex-end" gap="xs" mt="xs">
+                        <Button
+                          size="xs"
+                          variant="default"
+                          onClick={() => setSettingsPopoverOpened(false)}
+                        >
+                          {t("Cancel")}
+                        </Button>
+                        <Button
+                          size="xs"
+                          onClick={saveGallerySettings}
+                          loading={updateGallerySettingsMutation.isPending}
+                        >
+                          {t("Save")}
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Popover.Dropdown>
+                </Popover>
+              )}
               {onSelect && !pickerSelectionMode && canManageGallery && (
                 <Button
                   size="xs"
@@ -799,7 +911,7 @@ export default function GalleryModal({
                 })}
               </SimpleGrid>
 
-              {hasNextPage && !searchQuery && (
+              {hasNextPage && (
                 <div ref={loadMoreSentinelRef} style={{ height: 1 }} />
               )}
               {isFetchingNextPage && (
