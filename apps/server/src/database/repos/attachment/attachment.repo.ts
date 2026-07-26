@@ -232,7 +232,7 @@ export class AttachmentRepo {
       .where('spaceId', 'in', this.spaceMemberRepo.getUserSpaceIdsQuery(userId))
       .where('type', '=', 'cover')
       .where('fileName', '=', fileName)
-      .where('fileSize', '=', fileSize)
+      .where('fileSize', '=', String(fileSize))
       .where('deletedAt', 'is', null)
       .executeTakeFirst();
   }
