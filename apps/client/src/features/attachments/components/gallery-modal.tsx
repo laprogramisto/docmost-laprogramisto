@@ -110,11 +110,16 @@ export default function GalleryModal({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Only relevant when onSelect is set (cover-picker context): lets the user
+  // switch from "click applies as cover" to "click toggles selection", so
+  // bulk delete/download stays reachable even while picking a cover.
+  const [pickerSelectionMode, setPickerSelectionMode] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const lastClickedIndexRef = useRef<number | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["workspace-images"] });
@@ -124,6 +129,29 @@ export default function GalleryModal({
   const filteredItems = allItems.filter((item) =>
     item.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  // In the standalone gallery (no onSelect), clicking a thumbnail always
+  // toggles selection — there's no "apply as cover" behaviour to conflict
+  // with. In the cover-picker context, that only happens once the user
+  // explicitly switches into selection mode via the "Select" button.
+  const isSelectionMode = !onSelect || pickerSelectionMode;
+
+  const allFilteredSelected =
+    filteredItems.length > 0 &&
+    filteredItems.every((item) => selectedIds.has(item.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map((item) => item.id)));
+    }
+  };
+
+  const exitSelectionMode = () => {
+    setSelectedIds(new Set());
+    setPickerSelectionMode(false);
+  };
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -135,6 +163,22 @@ export default function GalleryModal({
       }
       return next;
     });
+  };
+
+  // Click = toggle just this item, remembering its position.
+  // Shift+click = extend the selection to every item between the last
+  // clicked one and this one (inclusive), matching the usual file-manager
+  // convention — it adds to the existing selection rather than replacing it.
+  const handleItemClick = (id: string, index: number, shiftKey: boolean) => {
+    if (shiftKey && lastClickedIndexRef.current !== null) {
+      const start = Math.min(lastClickedIndexRef.current, index);
+      const end = Math.max(lastClickedIndexRef.current, index);
+      const rangeIds = filteredItems.slice(start, end + 1).map((item) => item.id);
+      setSelectedIds((prev) => new Set([...prev, ...rangeIds]));
+    } else {
+      toggleSelected(id);
+    }
+    lastClickedIndexRef.current = index;
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -441,22 +485,36 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" wrap="nowrap">
-              {selectedIds.size > 0 && (
+              {onSelect && !pickerSelectionMode && (
+                <Button
+                  size="xs"
+                  variant="default"
+                  onClick={() => setPickerSelectionMode(true)}
+                >
+                  {t("Select")}
+                </Button>
+              )}
+              {isSelectionMode && (
                 <>
-                  <Button size="xs" variant="default" onClick={clearSelection}>
+                  <Button size="xs" variant="default" onClick={toggleSelectAll}>
+                    {allFilteredSelected ? t("Deselect all") : t("Select all")}
+                  </Button>
+                  <Button size="xs" variant="default" onClick={exitSelectionMode}>
                     {t("Cancel")}
                   </Button>
-                  <Button
-                    size="xs"
-                    color="red"
-                    leftSection={<IconTrash size={14} />}
-                    onClick={handleBulkDelete}
-                    loading={bulkDeleting}
-                  >
-                    {bulkDeleting
-                      ? `${progress.done}/${progress.total}`
-                      : t("Delete ({{count}})", { count: selectedIds.size })}
-                  </Button>
+                  {selectedIds.size > 0 && (
+                    <Button
+                      size="xs"
+                      color="red"
+                      leftSection={<IconTrash size={14} />}
+                      onClick={handleBulkDelete}
+                      loading={bulkDeleting}
+                    >
+                      {bulkDeleting
+                        ? `${progress.done}/${progress.total}`
+                        : t("Delete ({{count}})", { count: selectedIds.size })}
+                    </Button>
+                  )}
                 </>
               )}
               {uploading && (
@@ -499,7 +557,7 @@ export default function GalleryModal({
           {!isLoading && filteredItems.length > 0 && (
             <>
               <SimpleGrid cols={6} spacing="sm">
-                {filteredItems.map((attachment) => {
+                {filteredItems.map((attachment, index) => {
                   const url = `/api/files/${attachment.id}/${attachment.fileName}`;
                   const isSelected = selectedIds.has(attachment.id);
                   const isEditing = editingId === attachment.id;
@@ -511,19 +569,15 @@ export default function GalleryModal({
                       radius="sm"
                       className={classes.card}
                       data-selected={isSelected || undefined}
-                      style={onSelect ? { cursor: "pointer" } : undefined}
-                      onClick={
-                        onSelect
-                          ? () => {
-                              if (selectedIds.size > 0) {
-                                toggleSelected(attachment.id);
-                                return;
-                              }
-                              onSelect(url);
-                              onClose();
-                            }
-                          : undefined
-                      }
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => {
+                        if (isSelectionMode) {
+                          handleItemClick(attachment.id, index, e.shiftKey);
+                          return;
+                        }
+                        onSelect?.(url);
+                        onClose();
+                      }}
                     >
                       <Box className={classes.thumbWrapper}>
                         <LoadingOverlay visible={deletingId === attachment.id} />
