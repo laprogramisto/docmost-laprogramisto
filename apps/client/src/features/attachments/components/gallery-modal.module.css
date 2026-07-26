@@ -65,3 +65,52 @@
 .panel {
   position: relative;
 }
+
+.toolbar {
+  gap: var(--mantine-spacing-xs);
+}
+
+.searchInput {
+  flex: 1;
+  max-width: 280px;
+}
+
+.toolbarActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Touch devices report no real :hover — relying on .card:hover to reveal
+   the download/trash icons leaves them either invisible or stuck visible
+   after a tap (sticky hover), which is the "anarchic buttons on thumbnails"
+   symptom. Below the sm breakpoint (and on any device that can't hover),
+   show them permanently but at a smaller footprint so they don't overwhelm
+   a shrunk thumbnail. */
+@media (hover: none), (max-width: 47.99em) {
+  .actions {
+    opacity: 1;
+  }
+
+  .editButton {
+    opacity: 1;
+  }
+}
+
+/* Below the sm breakpoint, the search field and the action buttons no
+   longer fit on one row without clipping (this was the literal overflow
+   bug — a hardcoded 280px-wide search input plus 2-4 buttons in a
+   wrap="nowrap" row, on a ~300px-wide modal). Stack them instead. */
+@media (max-width: 47.99em) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .searchInput {
+    max-width: none;
+  }
+
+  .toolbarActions {
+    justify-content: flex-start;
+  }
+}
