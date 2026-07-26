@@ -66,6 +66,20 @@
   position: relative;
 }
 
+.gridScroll {
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@media (max-width: 47.99em) {
+  .gridScroll {
+    /* Stacked toolbar takes more vertical space on mobile, leaving less
+       room before the modal itself would need to scroll externally. */
+    max-height: 55vh;
+  }
+}
+
 .toolbar {
   gap: var(--mantine-spacing-xs);
 }

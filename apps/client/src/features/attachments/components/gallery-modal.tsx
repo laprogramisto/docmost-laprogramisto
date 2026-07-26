@@ -29,7 +29,7 @@ import {
   IconSquareCheck,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { useMediaQuery } from "@mantine/hooks";
+import { useMediaQuery, useIntersection } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceImagesQuery } from "@/features/attachments/queries/attachment-query.ts";
 import {
@@ -99,6 +99,13 @@ export default function GalleryModal({
 }: GalleryModalProps) {
   const { t } = useTranslation();
   const isMobile = useMediaQuery("(max-width: 47.99em)");
+  // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
+  // its .current is still null on the render where this container first
+  // mounts, so the observer would be created against the wrong root (or
+  // none). Storing the node in state forces a re-render once it's actually
+  // attached, and useIntersection re-creates its observer with the real
+  // element.
+  const [gridScrollEl, setGridScrollEl] = useState<HTMLDivElement | null>(null);
   const {
     data,
     isLoading,
@@ -106,6 +113,17 @@ export default function GalleryModal({
     hasNextPage,
     isFetchingNextPage,
   } = useWorkspaceImagesQuery();
+  const { ref: loadMoreSentinelRef, entry: loadMoreEntry } = useIntersection({
+    root: gridScrollEl,
+    rootMargin: "200px",
+    threshold: 0,
+  });
+
+  useEffect(() => {
+    if (loadMoreEntry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [loadMoreEntry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage]);
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadTabInputRef = useRef<HTMLInputElement>(null);
@@ -636,7 +654,7 @@ export default function GalleryModal({
           )}
 
           {!isLoading && filteredItems.length > 0 && (
-            <>
+            <Box ref={setGridScrollEl} className={classes.gridScroll}>
               <SimpleGrid cols={{ base: 1, xs: 2, sm: 4, md: 6 }} spacing="sm">
                 {filteredItems.map((attachment, index) => {
                   const url = `/api/files/${attachment.id}/${attachment.fileName}`;
@@ -749,18 +767,14 @@ export default function GalleryModal({
               </SimpleGrid>
 
               {hasNextPage && !searchQuery && (
+                <div ref={loadMoreSentinelRef} style={{ height: 1 }} />
+              )}
+              {isFetchingNextPage && (
                 <Center mt="md">
-                  <Button
-                    variant="default"
-                    size="xs"
-                    onClick={() => fetchNextPage()}
-                    loading={isFetchingNextPage}
-                  >
-                    {t("Load more")}
-                  </Button>
+                  <Loader size="sm" />
                 </Center>
               )}
-            </>
+            </Box>
           )}
         </Tabs.Panel>
 
