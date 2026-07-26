@@ -31,7 +31,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useMediaQuery, useIntersection } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { useWorkspaceImagesQuery } from "@/features/attachments/queries/attachment-query.ts";
+import { useWorkspaceImagesQuery, useGallerySettingsQuery, DEFAULT_GALLERY_SETTINGS } from "@/features/attachments/queries/attachment-query.ts";
 import {
   uploadLibraryImage,
   deleteWorkspaceImage,
@@ -50,7 +50,9 @@ import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import classes from "./gallery-modal.module.css";
 
-const MAX_BULK_FILES = 100;
+// Fallback while gallery settings haven't loaded yet — matches
+// DEFAULT_GALLERY_SETTINGS.maxBulkUploadFiles, kept as a local constant only
+// for readability at this specific call site.
 // Mirrors validImageExtensions in attachment.constants.ts (server-side) —
 // kept in sync manually since the two run in different runtimes. Anything
 // accepted here but rejected server-side would be a confusing dead end for
@@ -108,6 +110,10 @@ export default function GalleryModal({
     SpaceCaslAction.Manage,
     SpaceCaslSubject.Page,
   );
+  const { data: gallerySettings } = useGallerySettingsQuery();
+  const maxBulkFiles =
+    gallerySettings?.maxBulkUploadFiles ??
+    DEFAULT_GALLERY_SETTINGS.maxBulkUploadFiles;
   // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
   // its .current is still null on the render where this container first
   // mounts, so the observer would be created against the wrong root (or
@@ -121,7 +127,7 @@ export default function GalleryModal({
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useWorkspaceImagesQuery();
+  } = useWorkspaceImagesQuery(gallerySettings?.defaultPageSize);
   const { ref: loadMoreSentinelRef, entry: loadMoreEntry } = useIntersection({
     root: gridScrollEl,
     rootMargin: "200px",
@@ -245,15 +251,15 @@ export default function GalleryModal({
     let files = fileList;
     if (files.length === 0) return;
 
-    if (files.length > MAX_BULK_FILES) {
+    if (files.length > maxBulkFiles) {
       notifications.show({
         color: "yellow",
         message: t(
           "You can upload up to {{max}} images at once. The rest of your selection was ignored — please upload them in a separate batch.",
-          { max: MAX_BULK_FILES },
+          { max: maxBulkFiles },
         ),
       });
-      files = files.slice(0, MAX_BULK_FILES);
+      files = files.slice(0, maxBulkFiles);
     }
 
     // Duplicate check only covers images already loaded on the client

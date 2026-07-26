@@ -10,4 +10,6 @@ export {
   uploadLibraryImage,
   deleteWorkspaceImage,
   renameWorkspaceImage,
+  getGallerySettings,
+  updateGallerySettings,
 } from "./attachment-service.ts";

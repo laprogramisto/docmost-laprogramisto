@@ -54,6 +54,7 @@ import {
   DeleteImageDto,
   RenameImageDto,
 } from './dto/gallery-image.dto';
+import { UpdateGallerySettingsDto } from './dto/gallery-settings.dto';
 import { validate as isValidUUID } from 'uuid';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { TokenService } from '../auth/services/token.service';
@@ -538,6 +539,36 @@ export class AttachmentController {
       workspace.id,
       pagination,
     );
+  }
+
+  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
+  @HttpCode(HttpStatus.OK)
+  @Post('attachments/gallery-settings')
+  async getGallerySettings(@AuthWorkspace() workspace: Workspace) {
+    // Read-only, open to any authenticated workspace member — matches the
+    // gallery itself being visible to everyone; only *changing* these
+    // values requires Manage/Settings, below.
+    return this.attachmentService.getGallerySettings(workspace.id);
+  }
+
+  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
+  @HttpCode(HttpStatus.OK)
+  @Post('attachments/update-gallery-settings')
+  async updateGallerySettings(
+    @Body() dto: UpdateGallerySettingsDto,
+    @AuthUser() user: User,
+    @AuthWorkspace() workspace: Workspace,
+  ) {
+    const ability = this.workspaceAbility.createForUser(user, workspace);
+    if (
+      ability.cannot(WorkspaceCaslAction.Manage, WorkspaceCaslSubject.Settings)
+    ) {
+      throw new ForbiddenException();
+    }
+
+    return this.attachmentService.updateGallerySettings(workspace.id, dto);
   }
 
   @UseGuards(JwtAuthGuard, UserThrottlerGuard)

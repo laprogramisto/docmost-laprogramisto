@@ -505,4 +505,47 @@ async uploadFile(opts: {
     await this.storageService.delete(attachment.filePath);
     await this.attachmentRepo.deleteAttachmentById(attachmentId);
   }
+
+  // Defaults match the values that were previously hardcoded on both sides
+  // (MAX_BULK_FILES in gallery-modal.tsx, limit: 60 in
+  // useWorkspaceImagesQuery) — configuring nothing keeps today's behavior
+  // identical.
+  private static readonly DEFAULT_GALLERY_SETTINGS = {
+    maxBulkUploadFiles: 100,
+    defaultPageSize: 60,
+  };
+
+  async getGallerySettings(workspaceId: string) {
+    const workspace = await this.workspaceRepo.findById(workspaceId);
+    const gallerySettings =
+      (workspace?.settings as Record<string, any>)?.gallery ?? {};
+
+    return {
+      ...AttachmentService.DEFAULT_GALLERY_SETTINGS,
+      ...gallerySettings,
+    };
+  }
+
+  async updateGallerySettings(
+    workspaceId: string,
+    dto: { maxBulkUploadFiles?: number; defaultPageSize?: number },
+  ) {
+    const workspace = await this.workspaceRepo.findById(workspaceId);
+    // Settings is a single JSON blob shared with unrelated features (ai,
+    // api, sharing, templates...) — spreading the existing object first and
+    // only replacing the "gallery" key keeps every other namespace intact.
+    const currentSettings = (workspace?.settings as Record<string, any>) ?? {};
+    const currentGallery = currentSettings.gallery ?? {};
+    const nextGallery = { ...currentGallery, ...dto };
+
+    await this.workspaceRepo.updateWorkspace(
+      { settings: { ...currentSettings, gallery: nextGallery } },
+      workspaceId,
+    );
+
+    return {
+      ...AttachmentService.DEFAULT_GALLERY_SETTINGS,
+      ...nextGallery,
+    };
+  }
 }
