@@ -105,11 +105,25 @@ export class AttachmentController {
   ) {
     const maxFileSize = bytes(this.environmentService.getFileUploadSizeLimit());
 
-    let file = null;
+    let file: any = null;
+    let thumbnailFile: any = null;
     try {
-      file = await req.file({
-        limits: { fileSize: maxFileSize, fields: 3, files: 1 },
+      // req.files() (plural) rather than req.file(): this endpoint now
+      // accepts an optional second, named file part ("thumbnail") in the
+      // same request for covers, generated client-side. Every part not
+      // named "thumbnail" is treated as the main file — same role `file`
+      // always played before this change, so everything below this block
+      // that reads from `file` is untouched.
+      const parts = req.files({
+        limits: { fileSize: maxFileSize, fields: 3, files: 2 },
       });
+      for await (const part of parts) {
+        if (part.fieldname === 'thumbnail') {
+          thumbnailFile = part;
+        } else {
+          file = part;
+        }
+      }
     } catch (err: any) {
       this.logger.error(err.message);
       if (err?.statusCode === 413) {
@@ -181,6 +195,7 @@ export class AttachmentController {
     try {
       const fileResponse = await this.attachmentService.uploadFile({
         filePromise: file,
+        thumbnailFilePromise: thumbnailFile,
         pageId: pageId,
         spaceId: spaceId,
         userId: user.id,
@@ -222,6 +237,7 @@ export class AttachmentController {
     @AuthWorkspace() workspace: Workspace,
     @Param('fileId') fileId: string,
     @Param('fileName') fileName?: string,
+    @Query('variant') variant?: string,
   ) {
     if (!isValidUUID(fileId)) {
       throw new NotFoundException('Invalid file id');
@@ -263,7 +279,12 @@ export class AttachmentController {
     }
 
     try {
-      return await this.sendFileResponse(req, res, attachment, 'private');
+      return await this.sendFileResponse(
+        req,
+        res,
+        this.resolveVariant(attachment, variant),
+        'private',
+      );
     } catch (err) {
       this.logger.error(err);
       throw new NotFoundException('File not found');
@@ -278,6 +299,7 @@ export class AttachmentController {
     @Param('fileId') fileId: string,
     @Param('fileName') fileName?: string,
     @Query('jwt') jwtToken?: string,
+    @Query('variant') variant?: string,
   ) {
     let jwtPayload: JwtAttachmentPayload = null;
     try {
@@ -311,7 +333,12 @@ export class AttachmentController {
     }
 
     try {
-      return await this.sendFileResponse(req, res, attachment, 'public');
+      return await this.sendFileResponse(
+        req,
+        res,
+        this.resolveVariant(attachment, variant),
+        'public',
+      );
     } catch (err) {
       this.logger.error(err);
       throw new NotFoundException('File not found');
@@ -657,6 +684,24 @@ export class AttachmentController {
     });
 
     return updated;
+  }
+
+  // Thumbnails are always canvas-generated JPEGs client-side regardless of
+  // the original format, so mimeType/fileExt are overridden here rather
+  // than reused from the original attachment — otherwise a PNG cover's
+  // JPEG thumbnail would be served with an incorrect Content-Type.
+  private resolveVariant(attachment: Attachment, variant?: string): Attachment {
+    if (variant !== 'thumbnail' || !attachment.thumbnailPath) {
+      return attachment;
+    }
+
+    return {
+      ...attachment,
+      filePath: attachment.thumbnailPath,
+      fileSize: attachment.thumbnailSize,
+      mimeType: 'image/jpeg',
+      fileExt: '.jpg',
+    };
   }
 
   private async sendFileResponse(

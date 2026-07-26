@@ -134,10 +134,14 @@ export async function uploadLibraryImage(
   file: File,
   spaceId: string,
   signal?: AbortSignal,
+  thumbnail?: Blob | null,
 ): Promise<IAttachment> {
   const formData = new FormData();
   formData.append("spaceId", spaceId);
   formData.append("type", "cover");
+  if (thumbnail) {
+    formData.append("thumbnail", thumbnail, "thumbnail.jpg");
+  }
   formData.append("file", file);
 
   const req = await api.post("/files/upload", formData, {

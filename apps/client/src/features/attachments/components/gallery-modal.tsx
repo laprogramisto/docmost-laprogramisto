@@ -43,6 +43,7 @@ import {
 import { uploadFile } from "@/features/page/services/page-service.ts";
 import { getFileUrl } from "@/lib/config.ts";
 import { downloadFile } from "@/lib/download-file.ts";
+import { generateThumbnail } from "@/lib/generate-thumbnail.ts";
 import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
 import { useSpaceAbility } from "@/features/space/permissions/use-space-ability.ts";
 import {
@@ -337,7 +338,13 @@ export default function GalleryModal({
       UPLOAD_CONCURRENCY,
       async (file) => {
         try {
-          const attachment = await uploadLibraryImage(file, spaceId, controller.signal);
+          const thumbnail = await generateThumbnail(file);
+          const attachment = await uploadLibraryImage(
+            file,
+            spaceId,
+            controller.signal,
+            thumbnail,
+          );
           if (!attachment?.id) {
             throw new Error("Empty response");
           }
@@ -402,7 +409,8 @@ export default function GalleryModal({
     }
 
     try {
-      const attachment = await uploadFile(file, pageId, undefined, "cover");
+      const thumbnail = await generateThumbnail(file);
+      const attachment = await uploadFile(file, pageId, undefined, "cover", thumbnail);
       const url = `/api/files/${attachment.id}/${attachment.fileName}`;
       invalidate();
       onSelect?.(url);
@@ -854,7 +862,8 @@ export default function GalleryModal({
                       <Box className={classes.thumbWrapper}>
                         <LoadingOverlay visible={deletingId === attachment.id} />
                         <Image
-                          src={getFileUrl(url)}
+                          src={`${getFileUrl(url)}?variant=thumbnail`}
+                          fallbackSrc={getFileUrl(url)}
                           alt={attachment.fileName}
                           radius="sm"
                           h={100}
