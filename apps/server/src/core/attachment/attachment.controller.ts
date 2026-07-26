@@ -539,6 +539,16 @@ export class AttachmentController {
     }
 
     await this.attachmentService.deleteImage(dto.attachmentId, workspace.id);
+
+    this.auditService.log({
+      event: AuditEvent.ATTACHMENT_DELETED,
+      resourceType: AuditResource.ATTACHMENT,
+      resourceId: dto.attachmentId,
+      spaceId: attachment.spaceId,
+      metadata: {
+        fileName: attachment.fileName,
+      },
+    });
   }
 
   @UseGuards(JwtAuthGuard, UserThrottlerGuard)
@@ -569,7 +579,24 @@ export class AttachmentController {
       throw new BadRequestException('File name is required');
     }
 
-    return this.attachmentRepo.updateAttachment({ fileName: trimmedName }, dto.attachmentId);
+    const previousName = attachment.fileName;
+    const updated = await this.attachmentRepo.updateAttachment(
+      { fileName: trimmedName },
+      dto.attachmentId,
+    );
+
+    this.auditService.log({
+      event: AuditEvent.ATTACHMENT_RENAMED,
+      resourceType: AuditResource.ATTACHMENT,
+      resourceId: dto.attachmentId,
+      spaceId: attachment.spaceId,
+      changes: {
+        before: { fileName: previousName },
+        after: { fileName: trimmedName },
+      },
+    });
+
+    return updated;
   }
 
   private async sendFileResponse(
