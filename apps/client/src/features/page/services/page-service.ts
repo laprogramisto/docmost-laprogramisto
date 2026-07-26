@@ -198,6 +198,7 @@ export async function uploadFile(
   pageId: string,
   attachmentId?: string,
   type?: string,
+  thumbnail?: Blob | null,
 ): Promise<IAttachment> {
   const formData = new FormData();
   if (attachmentId) {
@@ -207,7 +208,9 @@ export async function uploadFile(
   if (type) {
     formData.append("type", type);
   }
-  formData.append("fileSize", String(file.size));
+  if (thumbnail) {
+    formData.append("thumbnail", thumbnail, "thumbnail.jpg");
+  }
   formData.append("file", file);
 
   const req = await api.post<IAttachment>("/files/upload", formData, {

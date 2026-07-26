@@ -45,6 +45,7 @@ export class AttachmentService {
 
 async uploadFile(opts: {
     filePromise: Promise<MultipartFile>;
+    thumbnailFilePromise?: Promise<MultipartFile>;
     pageId?: string;
     userId: string;
     spaceId: string;
@@ -52,7 +53,7 @@ async uploadFile(opts: {
     attachmentId?: string;
     type?: AttachmentType;
   }) {
-    const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
+    const { filePromise, thumbnailFilePromise, pageId, spaceId, userId, workspaceId } = opts;
     const isCover = opts.type === AttachmentType.Cover;
 
     // Covers are buffered rather than streamed — same buffered pattern
@@ -70,6 +71,19 @@ async uploadFile(opts: {
       // the allowed image formats, since a renamed non-image file would
       // otherwise pass an extension-only check.
       validateImageSignature(preparedFile.buffer);
+    }
+
+    // The thumbnail is generated client-side (canvas), sent alongside the
+    // main file only for covers. Its own signature is checked the same way
+    // as the main file — it travels over the network like any other
+    // upload and shouldn't be trusted just because it came from "our own"
+    // upload flow.
+    let preparedThumbnail: PreparedFile | null = null;
+    if (isCover && thumbnailFilePromise) {
+      preparedThumbnail = await prepareFile(thumbnailFilePromise, {
+        skipBuffer: false,
+      });
+      validateImageSignature(preparedThumbnail.buffer);
     }
 
     let isUpdate = false;
@@ -101,6 +115,12 @@ async uploadFile(opts: {
     }
 
     const filePath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
+
+    let thumbnailPath: string | null = null;
+    if (preparedThumbnail) {
+      thumbnailPath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/thumbnail_${preparedThumbnail.fileName}`;
+      await this.uploadToDrive(thumbnailPath, preparedThumbnail.buffer);
+    }
 
     if (isCover) {
       await this.uploadToDrive(filePath, preparedFile.buffer);
@@ -136,6 +156,8 @@ async uploadFile(opts: {
           spaceId,
           workspaceId,
           pageId,
+          thumbnailPath,
+          thumbnailSize: preparedThumbnail?.buffer?.length ?? null,
         });
       }
 
@@ -282,6 +304,8 @@ async uploadFile(opts: {
     workspaceId: string;
     pageId?: string;
     spaceId?: string;
+    thumbnailPath?: string | null;
+    thumbnailSize?: number | null;
     trx?: KyselyTransaction;
   }): Promise<Attachment> {
     const {
@@ -293,6 +317,8 @@ async uploadFile(opts: {
       workspaceId,
       pageId,
       spaceId,
+      thumbnailPath,
+      thumbnailSize,
       trx,
     } = opts;
     return this.attachmentRepo.insertAttachment(
@@ -308,6 +334,8 @@ async uploadFile(opts: {
         workspaceId: workspaceId,
         pageId: pageId,
         spaceId: spaceId,
+        thumbnailPath: thumbnailPath ?? null,
+        thumbnailSize: thumbnailSize ?? null,
       },
       trx,
     );

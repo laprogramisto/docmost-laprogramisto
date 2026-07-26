@@ -34,6 +34,8 @@ export class AttachmentRepo {
     'createdAt',
     'updatedAt',
     'deletedAt',
+    'thumbnailPath',
+    'thumbnailSize',
   ];
 
   async findById(

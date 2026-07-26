@@ -56,6 +56,8 @@ export interface Attachments {
   pageId: string | null;
   spaceId: string | null;
   textContent: string | null;
+  thumbnailPath: string | null;
+  thumbnailSize: Int8 | null;
   tsv: string | null;
   type: string | null;
   updatedAt: Generated<Timestamp>;
