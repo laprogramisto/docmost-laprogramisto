@@ -117,7 +117,7 @@ export function PageCover({
   }, [editable]);
 
   const handleImageMouseDown = (e: React.MouseEvent) => {
-    if (!editable || isRepositioning) return;
+    if (!editable) return;
     // Only the left mouse button starts a potential drag.
     if (e.button !== 0) return;
 
