@@ -56,6 +56,7 @@ export interface FullEditorProps {
   canComment?: boolean;
   coverPhoto?: string;
   coverPhotoPosition?: number;
+  coverPhotoPositionX?: number;
   coverPhotoSize?: string;
   spaceId?: string;
 }
@@ -72,6 +73,7 @@ export function FullEditor({
   canComment,
   coverPhoto,
   coverPhotoPosition,
+  coverPhotoPositionX,
   coverPhotoSize,
   spaceId,
 }: FullEditorProps) {
@@ -110,6 +112,7 @@ export function FullEditor({
         pageId={pageId}
         coverPhoto={coverPhoto}
         coverPhotoPosition={coverPhotoPosition}
+        coverPhotoPositionX={coverPhotoPositionX}
         coverPhotoSize={coverPhotoSize}
         editable={editable && isEditMode}
         spaceId={spaceId}

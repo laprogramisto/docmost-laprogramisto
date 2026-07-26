@@ -8,6 +8,7 @@ export interface IPage {
   icon: string;
   coverPhoto: string;
   coverPhotoPosition: number;
+  coverPhotoPositionX: number;
   coverPhotoSize: string;
   parentPageId: string;
   creatorId: string;
@@ -88,6 +89,7 @@ export interface IPageInput {
   icon: string;
   coverPhoto: string;
   coverPhotoPosition: number;
+  coverPhotoPositionX: number;
   coverPhotoSize: string;
   position: string;
   isLocked: boolean;

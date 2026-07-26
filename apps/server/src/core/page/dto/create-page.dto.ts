@@ -33,6 +33,12 @@ export class CreatePageDto {
   coverPhotoPosition?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  coverPhotoPositionX?: number;
+
+  @IsOptional()
   @IsIn(['small', 'large'])
   coverPhotoSize?: string;
 

@@ -4,12 +4,11 @@ import {
   IconPhoto,
   IconTrash,
   IconRefresh,
-  IconArrowsMove,
-  IconCheck,
-  IconX,
   IconArrowsMaximize,
   IconArrowsMinimize,
   IconDownload,
+  IconCheck,
+  IconX,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useUpdatePageMutation } from "@/features/page/queries/page-query.ts";
@@ -18,10 +17,16 @@ import toolbarClasses from "../common/toolbar-menu.module.css";
 import classes from "./page-cover.module.css";
 import GalleryModal from "@/features/attachments/components/gallery-modal.tsx";
 
+// Below this many pixels of movement, a mousedown+mouseup is treated as a
+// plain click (do nothing) rather than the start of a drag-to-reposition
+// gesture — avoids entering reposition mode on an accidental click.
+const DRAG_THRESHOLD_PX = 4;
+
 interface PageCoverProps {
   pageId: string;
   coverPhoto?: string;
   coverPhotoPosition?: number;
+  coverPhotoPositionX?: number;
   coverPhotoSize?: string;
   editable: boolean;
   spaceId?: string;
@@ -31,35 +36,72 @@ export function PageCover({
   pageId,
   coverPhoto,
   coverPhotoPosition,
+  coverPhotoPositionX,
   coverPhotoSize,
   editable,
   spaceId,
 }: PageCoverProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ startY: number; startPosition: number } | null>(null);
   const { mutateAsync: updatePageAsync } = useUpdatePageMutation();
   const [pickerOpened, setPickerOpened] = useState(false);
+
   const [position, setPosition] = useState<number>(coverPhotoPosition ?? 50);
+  const [positionX, setPositionX] = useState<number>(coverPhotoPositionX ?? 50);
   const [isRepositioning, setIsRepositioning] = useState(false);
+
+  // Tracks an in-progress mousedown, before we know yet whether it'll turn
+  // into a drag (reposition) or stay a plain click.
+  const dragState = useRef<{
+    startX: number;
+    startY: number;
+    startPosition: number;
+    startPositionX: number;
+    hasMoved: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setPosition(coverPhotoPosition ?? 50);
   }, [coverPhotoPosition]);
 
   useEffect(() => {
-    if (!isRepositioning) return;
+    setPositionX(coverPhotoPositionX ?? 50);
+  }, [coverPhotoPositionX]);
+
+  useEffect(() => {
+    if (!editable) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragState.current) return;
+      const deltaX = e.clientX - dragState.current.startX;
       const deltaY = e.clientY - dragState.current.startY;
+
+      if (
+        !dragState.current.hasMoved &&
+        Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX
+      ) {
+        return;
+      }
+
+      if (!dragState.current.hasMoved) {
+        dragState.current.hasMoved = true;
+        setIsRepositioning(true);
+      }
+
       const containerHeight = containerRef.current?.clientHeight ?? 240;
-      const deltaPercent = (deltaY / containerHeight) * 100;
-      const next = Math.min(
+      const containerWidth = containerRef.current?.clientWidth ?? 1;
+
+      const nextY = Math.min(
         100,
-        Math.max(0, dragState.current.startPosition - deltaPercent),
+        Math.max(0, dragState.current.startPosition - (deltaY / containerHeight) * 100),
       );
-      setPosition(next);
+      const nextX = Math.min(
+        100,
+        Math.max(0, dragState.current.startPositionX - (deltaX / containerWidth) * 100),
+      );
+
+      setPosition(nextY);
+      setPositionX(nextX);
     };
 
     const handleMouseUp = () => {
@@ -72,15 +114,40 @@ export function PageCover({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isRepositioning]);
+  }, [editable]);
+
+  const handleImageMouseDown = (e: React.MouseEvent) => {
+    if (!editable || isRepositioning) return;
+    // Only the left mouse button starts a potential drag.
+    if (e.button !== 0) return;
+
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosition: position,
+      startPositionX: positionX,
+      hasMoved: false,
+    };
+  };
 
   const handleSelectCover = (url: string) => {
-    updatePageAsync({ pageId, coverPhoto: url, coverPhotoPosition: 50 });
+    updatePageAsync({
+      pageId,
+      coverPhoto: url,
+      coverPhotoPosition: 50,
+      coverPhotoPositionX: 50,
+    });
     setPosition(50);
+    setPositionX(50);
   };
 
   const handleRemove = async () => {
-    await updatePageAsync({ pageId, coverPhoto: null, coverPhotoPosition: null });
+    await updatePageAsync({
+      pageId,
+      coverPhoto: null,
+      coverPhotoPosition: null,
+      coverPhotoPositionX: null,
+    });
   };
 
   const handleDownload = async () => {
@@ -98,12 +165,17 @@ export function PageCover({
   };
 
   const handleSavePosition = async () => {
-    await updatePageAsync({ pageId, coverPhotoPosition: Math.round(position) });
+    await updatePageAsync({
+      pageId,
+      coverPhotoPosition: Math.round(position),
+      coverPhotoPositionX: Math.round(positionX),
+    });
     setIsRepositioning(false);
   };
 
   const handleCancelPosition = () => {
     setPosition(coverPhotoPosition ?? 50);
+    setPositionX(coverPhotoPositionX ?? 50);
     setIsRepositioning(false);
   };
 
@@ -145,12 +217,7 @@ export function PageCover({
       <Box
         ref={containerRef}
         className={classes.coverWrapper}
-        onMouseDown={(e) => {
-          if (!isRepositioning) return;
-          dragState.current = { startY: e.clientY, startPosition: position };
-        }}
         style={{
-          cursor: isRepositioning ? "grab" : "default",
           height: coverPhotoSize === "small" ? 120 : 240,
         }}
       >
@@ -158,8 +225,12 @@ export function PageCover({
           src={getFileUrl(coverPhoto)}
           alt=""
           className={classes.coverImage}
-          style={{ objectPosition: `center ${position}%` }}
+          style={{
+            objectPosition: `${positionX}% ${position}%`,
+            cursor: editable ? "grab" : "default",
+          }}
           draggable={false}
+          onMouseDown={handleImageMouseDown}
         />
         {editable && (
           <Group className={`${toolbarClasses.toolbar} ${classes.coverActions}`} gap={2}>
@@ -185,11 +256,6 @@ export function PageCover({
                     ) : (
                       <IconArrowsMinimize size={16} />
                     )}
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={t("Reposition")}>
-                  <ActionIcon variant="subtle" onClick={() => setIsRepositioning(true)}>
-                    <IconArrowsMove size={16} />
                   </ActionIcon>
                 </Tooltip>
                 <Tooltip label={t("Change cover")}>
