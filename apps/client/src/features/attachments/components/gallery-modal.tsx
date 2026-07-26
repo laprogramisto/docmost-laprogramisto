@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   SimpleGrid,
@@ -11,6 +11,7 @@ import {
   Box,
   Button,
   Group,
+  Stack,
   Tabs,
   ActionIcon,
   LoadingOverlay,
@@ -135,22 +136,50 @@ export default function GalleryModal({
   // explicitly switches into selection mode via the "Select" button.
   const isSelectionMode = !onSelect || pickerSelectionMode;
 
-  const allFilteredSelected =
-    filteredItems.length > 0 &&
-    filteredItems.every((item) => selectedIds.has(item.id));
-
-  const toggleSelectAll = () => {
-    if (allFilteredSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredItems.map((item) => item.id)));
-    }
+  // The button that calls this only appears when selectedIds is empty (see
+  // the merged Select all / Cancel control below), so this only ever needs
+  // to select — the "deselect everything" case is now handled by Cancel.
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredItems.map((item) => item.id)));
   };
 
   const exitSelectionMode = () => {
     setSelectedIds(new Set());
     setPickerSelectionMode(false);
   };
+
+  // Escape, two levels:
+  // 1st press — if there's a selection state to back out of (something
+  //   selected, or picker selection mode entered with nothing selected yet —
+  //   the gap the merged Select all/Cancel button leaves open), back out of
+  //   it and stop there.
+  // 2nd press (or 1st, if there was nothing to back out of) — close the
+  //   modal, same as Mantine's default closeOnEscape would have done.
+  // Renaming (editingId) is intentionally excluded here: its own input
+  // already handles Escape and stops propagation, so this listener never
+  // sees that keypress while a rename is in progress.
+  useEffect(() => {
+    if (!opened) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+
+      const hasSelectionStateToExit =
+        selectedIds.size > 0 || (Boolean(onSelect) && pickerSelectionMode);
+
+      if (isSelectionMode && hasSelectionStateToExit) {
+        e.stopPropagation();
+        e.preventDefault();
+        exitSelectionMode();
+        return;
+      }
+
+      onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [opened, isSelectionMode, selectedIds, onSelect, pickerSelectionMode, onClose]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -445,7 +474,15 @@ export default function GalleryModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title={t("Gallery")} size="90%" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={t("Gallery")}
+      size="90%"
+      centered={false}
+      yOffset="8dvh"
+      closeOnEscape={false}
+    >
       <Tabs defaultValue="covers">
         <Tabs.List>
           <Tabs.Tab value="covers" leftSection={<IconPhoto size={14} />}>
@@ -495,11 +532,20 @@ export default function GalleryModal({
               )}
               {isSelectionMode && (
                 <>
-                  <Button size="xs" variant="default" onClick={toggleSelectAll}>
-                    {allFilteredSelected ? t("Deselect all") : t("Select all")}
-                  </Button>
-                  <Button size="xs" variant="default" onClick={exitSelectionMode}>
-                    {t("Cancel")}
+                  {/* Select all / Cancel are merged into a single control:
+                      with nothing selected there's nothing to cancel out of
+                      yet, so the button offers "Select all". As soon as one
+                      item is selected, the same slot becomes "Cancel",
+                      clearing the selection and exiting selection mode in
+                      one action rather than exposing two separate buttons
+                      that overlapped once everything was selected. */}
+                  <Button
+                    size="xs"
+                    variant="default"
+                    onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
+                    disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                  >
+                    {selectedIds.size > 0 ? t("Cancel") : t("Select all")}
                   </Button>
                   {selectedIds.size > 0 && (
                     <Button
@@ -617,7 +663,10 @@ export default function GalleryModal({
                             onChange={(e) => setEditingValue(e.currentTarget.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") saveEditing(attachment.id);
-                              if (e.key === "Escape") cancelEditing();
+                              if (e.key === "Escape") {
+                                e.stopPropagation();
+                                cancelEditing();
+                              }
                             }}
                             style={{ flex: 1 }}
                           />
@@ -688,12 +737,19 @@ export default function GalleryModal({
                   </Text>
                 </Box>
               )}
-              <Button
-                leftSection={<IconCloudUpload size={16} />}
-                onClick={() => uploadTabInputRef.current?.click()}
-              >
-                {t("Upload a file")}
-              </Button>
+              <Stack align="center" gap="xs">
+                <Button
+                  leftSection={<IconCloudUpload size={16} />}
+                  onClick={() => uploadTabInputRef.current?.click()}
+                >
+                  {t("Upload a file")}
+                </Button>
+                <Text size="xs" c="dimmed" ta="center" maw={340}>
+                  {t(
+                    "Unlike the Covers tab, this uploads a file from your device and applies it as this page's cover in one step. It's also added to the shared gallery afterwards, just like a Covers-tab upload. You can drag and drop an image here too.",
+                  )}
+                </Text>
+              </Stack>
               <input
                 ref={uploadTabInputRef}
                 type="file"

@@ -193,6 +193,36 @@ export function PageCover({
     setIsRepositioning(false);
   };
 
+  // Kept in a ref rather than in the effect's dependency array below:
+  // position/positionX change on every mousemove frame during a drag, and
+  // handleSavePosition/handleCancelPosition close over them — putting them
+  // directly in the deps would tear down and re-add the keydown listener on
+  // every frame instead of once per reposition session.
+  const positionHandlersRef = useRef({ handleSavePosition, handleCancelPosition });
+  positionHandlersRef.current = { handleSavePosition, handleCancelPosition };
+
+  // Escape cancels the in-progress reposition (reverts to the last saved
+  // position), Enter confirms it (same pair of actions as the ✓/✗ buttons
+  // in the toolbar). Scoped to isRepositioning so it never intercepts
+  // Escape/Enter elsewhere on the page — e.g. the alt-text popover has its
+  // own independent Escape/Enter handling on its own input.
+  useEffect(() => {
+    if (!isRepositioning) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        positionHandlersRef.current.handleCancelPosition();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        positionHandlersRef.current.handleSavePosition();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRepositioning]);
+
   const handleToggleSize = async () => {
     await updatePageAsync({
       pageId,
