@@ -125,6 +125,10 @@ export default function GalleryModal({
   const [draftPageSize, setDraftPageSize] = useState<number>(
     gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
   );
+  const [draftRateLimit, setDraftRateLimit] = useState<number>(
+    gallerySettings?.rateLimitPerMinute ??
+      DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
+  );
 
   const openSettingsPopover = () => {
     // Re-seed the draft from the latest known values every time the panel
@@ -135,6 +139,10 @@ export default function GalleryModal({
     setDraftPageSize(
       gallerySettings?.defaultPageSize ?? DEFAULT_GALLERY_SETTINGS.defaultPageSize,
     );
+    setDraftRateLimit(
+      gallerySettings?.rateLimitPerMinute ??
+        DEFAULT_GALLERY_SETTINGS.rateLimitPerMinute,
+    );
     setSettingsPopoverOpened(true);
   };
 
@@ -143,6 +151,7 @@ export default function GalleryModal({
       {
         maxBulkUploadFiles: draftMaxBulkFiles,
         defaultPageSize: draftPageSize,
+        rateLimitPerMinute: draftRateLimit,
       },
       {
         onSuccess: () => setSettingsPopoverOpened(false),
@@ -647,6 +656,16 @@ export default function GalleryModal({
                         value={draftPageSize}
                         onChange={(v) =>
                           setDraftPageSize(typeof v === "number" ? v : 6)
+                        }
+                      />
+                      <NumberInput
+                        label={t("Requests per minute")}
+                        size="xs"
+                        min={10}
+                        max={1000}
+                        value={draftRateLimit}
+                        onChange={(v) =>
+                          setDraftRateLimit(typeof v === "number" ? v : 10)
                         }
                       />
                       <Group justify="flex-end" gap="xs" mt="xs">

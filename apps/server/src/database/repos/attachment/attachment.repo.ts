@@ -8,7 +8,6 @@ import {
   UpdatableAttachment,
 } from '@docmost/db/types/entity.types';
 import { AttachmentType } from '../../../core/attachment/attachment.constants';
-import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
 import { executeWithCursorPagination } from '@docmost/db/pagination/cursor-pagination';
 import { SpaceMemberRepo } from '@docmost/db/repos/space/space-member.repo';
 
@@ -187,7 +186,7 @@ export class AttachmentRepo {
   async getWorkspaceImages(
     userId: string,
     workspaceId: string,
-    pagination: PaginationOptions,
+    pagination: { limit?: number; cursor?: string; beforeCursor?: string },
     query?: string,
   ) {
     let dbQuery = this.db

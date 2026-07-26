@@ -73,7 +73,7 @@ import {
   AUTH_THROTTLER,
   AI_CHAT_THROTTLER,
 } from '../../integrations/throttle/throttler-names';
-import { UserThrottlerGuard } from '../../integrations/throttle/user-throttler.guard';
+import { GalleryThrottlerGuard } from '../../integrations/throttle/gallery-throttler.guard';
 
 @Controller()
 export class AttachmentController {
@@ -92,7 +92,7 @@ export class AttachmentController {
     @Inject(AUDIT_SERVICE) private readonly auditService: IAuditService,
   ) {}
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('files/upload')
@@ -525,7 +525,7 @@ export class AttachmentController {
     }
   }
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('attachments/list-images')
@@ -542,7 +542,7 @@ export class AttachmentController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('attachments/gallery-settings')
@@ -553,7 +553,7 @@ export class AttachmentController {
     return this.attachmentService.getGallerySettings(workspace.id);
   }
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('attachments/update-gallery-settings')
@@ -572,7 +572,7 @@ export class AttachmentController {
     return this.attachmentService.updateGallerySettings(workspace.id, dto);
   }
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('attachments/delete-image')
@@ -608,7 +608,7 @@ export class AttachmentController {
     });
   }
 
-  @UseGuards(JwtAuthGuard, UserThrottlerGuard)
+  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
   @Post('attachments/rename-image')
