@@ -4,7 +4,6 @@ import {
   AvatarIconType,
   IAttachment,
 } from "@/features/attachments/types/attachment.types.ts";
-import { IPagination } from "@/lib/types.ts";
 
 async function compressAndResizeIcon(
   file: File,
@@ -66,22 +65,6 @@ export async function uploadIcon(
   });
 }
 
-export async function uploadLibraryImage(
-  file: File,
-  spaceId: string,
-): Promise<IAttachment> {
-  const formData = new FormData();
-  formData.append("spaceId", spaceId);
-  formData.append("type", "cover");
-  formData.append("file", file);
-
-  const req = await api.post("/files/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-
-  return req as unknown as IAttachment;
-}
-
 export async function uploadUserAvatar(file: File): Promise<IAttachment> {
   return uploadIcon(file, AvatarIconType.AVATAR);
 }
@@ -124,15 +107,36 @@ export async function removeWorkspaceIcon(): Promise<void> {
 
 export async function getWorkspaceImages(
   pagination?: { limit?: number; cursor?: string },
-): Promise<IPagination<IAttachment>> {
+): Promise<import("@/lib/types.ts").IPagination<IAttachment>> {
   const req = await api.post("/attachments/list-images", pagination);
   return req.data;
+}
+
+export async function uploadLibraryImage(
+  file: File,
+  spaceId: string,
+  signal?: AbortSignal,
+): Promise<IAttachment> {
+  const formData = new FormData();
+  formData.append("spaceId", spaceId);
+  formData.append("type", "cover");
+  formData.append("file", file);
+
+  const req = await api.post("/files/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    signal,
+  });
+
+  return req as unknown as IAttachment;
 }
 
 export async function deleteWorkspaceImage(attachmentId: string): Promise<void> {
   await api.post("/attachments/delete-image", { attachmentId });
 }
 
-export async function renameWorkspaceImage(attachmentId: string, fileName: string): Promise<void> {
+export async function renameWorkspaceImage(
+  attachmentId: string,
+  fileName: string,
+): Promise<void> {
   await api.post("/attachments/rename-image", { attachmentId, fileName });
 }
