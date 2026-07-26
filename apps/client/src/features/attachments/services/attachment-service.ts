@@ -112,6 +112,23 @@ export async function getWorkspaceImages(
   return req.data;
 }
 
+export interface IGallerySettings {
+  maxBulkUploadFiles: number;
+  defaultPageSize: number;
+}
+
+export async function getGallerySettings(): Promise<IGallerySettings> {
+  const req = await api.post("/attachments/gallery-settings");
+  return req.data;
+}
+
+export async function updateGallerySettings(
+  settings: Partial<IGallerySettings>,
+): Promise<IGallerySettings> {
+  const req = await api.post("/attachments/update-gallery-settings", settings);
+  return req.data;
+}
+
 export async function uploadLibraryImage(
   file: File,
   spaceId: string,
@@ -120,7 +137,6 @@ export async function uploadLibraryImage(
   const formData = new FormData();
   formData.append("spaceId", spaceId);
   formData.append("type", "cover");
-  formData.append("fileSize", String(file.size));
   formData.append("file", file);
 
   const req = await api.post("/files/upload", formData, {
