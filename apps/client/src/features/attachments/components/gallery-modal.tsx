@@ -136,9 +136,8 @@ export default function GalleryModal({
 
   const clearSelection = () => setSelectedIds(new Set());
 
-  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  const processFiles = async (fileList: File[]) => {
+    let files = fileList;
     if (files.length === 0) return;
 
     if (files.length > MAX_BULK_FILES) {
@@ -199,6 +198,33 @@ export default function GalleryModal({
 
     setUploading(false);
     invalidate();
+  };
+
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    processFiles(files);
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    // Only clear the flag once the pointer actually leaves the drop zone,
+    // not when it moves over a child element inside it.
+    if (e.currentTarget === e.target) setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    processFiles(files);
   };
 
   const handleUploadTabFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,7 +367,21 @@ export default function GalleryModal({
           )}
         </Tabs.List>
 
-        <Tabs.Panel value="covers" pt="md">
+        <Tabs.Panel
+          value="covers"
+          pt="md"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`${classes.panel} ${isDragging ? classes.dropzoneActive : ""}`}
+        >
+          {isDragging && (
+            <Box className={classes.dropzoneOverlay}>
+              <Text size="sm" fw={500}>
+                {t("Drop images to upload")}
+              </Text>
+            </Box>
+          )}
           <Group justify="space-between" mb="sm" wrap="nowrap">
             <TextInput
               placeholder={t("Search images")}

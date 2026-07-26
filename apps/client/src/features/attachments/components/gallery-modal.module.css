@@ -1,3 +1,20 @@
+.card {
+  position: relative;
+  background-color: var(--mantine-color-body);
+}
+
+.card[data-selected] {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+.thumbWrapper {
+  position: relative;
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+}
+
 .checkbox {
   position: absolute;
   top: 4px;
@@ -25,11 +42,6 @@
   opacity: 1;
 }
 
-.card[data-selected] {
-  outline: 2px solid var(--mantine-primary-color-filled);
-  outline-offset: -2px;
-}
-
 .nameRow {
   align-items: center;
 }
@@ -41,4 +53,28 @@
 
 .nameRow:hover .editButton {
   opacity: 1;
+}
+
+.dropzoneActive {
+  outline: 2px dashed var(--mantine-primary-color-filled);
+  outline-offset: -4px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.dropzoneOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: light-dark(
+    rgba(255, 255, 255, 0.85),
+    rgba(0, 0, 0, 0.75)
+  );
+  pointer-events: none;
+}
+
+.panel {
+  position: relative;
 }
