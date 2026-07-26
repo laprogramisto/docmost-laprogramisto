@@ -621,7 +621,7 @@ export default function GalleryModal({
                 >
                   <Popover.Target>
                     <ActionIcon
-                      size="xs"
+                      size="input-xs"
                       variant="default"
                       onClick={() =>
                         settingsPopoverOpened
@@ -689,15 +689,25 @@ export default function GalleryModal({
                 </Popover>
               )}
               {onSelect && !pickerSelectionMode && canManageGallery && (
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconSquareCheck size={14} />}
-                  onClick={() => setPickerSelectionMode(true)}
-                  aria-label={isMobile ? t("Select") : undefined}
-                >
-                  {!isMobile && t("Select")}
-                </Button>
+                isMobile ? (
+                  <ActionIcon
+                    size="input-xs"
+                    variant="default"
+                    onClick={() => setPickerSelectionMode(true)}
+                    aria-label={t("Select")}
+                  >
+                    <IconSquareCheck size={14} />
+                  </ActionIcon>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconSquareCheck size={14} />}
+                    onClick={() => setPickerSelectionMode(true)}
+                  >
+                    {t("Select")}
+                  </Button>
+                )
               )}
               {isSelectionMode && (
                 <>
@@ -708,29 +718,39 @@ export default function GalleryModal({
                       clearing the selection and exiting selection mode in
                       one action rather than exposing two separate buttons
                       that overlapped once everything was selected. */}
-                  <Button
-                    size="xs"
-                    variant="default"
-                    leftSection={
-                      selectedIds.size > 0 ? (
+                  {isMobile ? (
+                    <ActionIcon
+                      size="input-xs"
+                      variant="default"
+                      onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
+                      disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                      aria-label={
+                        selectedIds.size > 0 ? t("Cancel") : t("Select all")
+                      }
+                    >
+                      {selectedIds.size > 0 ? (
                         <IconX size={14} />
                       ) : (
                         <IconSquareCheck size={14} />
-                      )
-                    }
-                    onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
-                    disabled={selectedIds.size === 0 && filteredItems.length === 0}
-                    aria-label={
-                      isMobile
-                        ? selectedIds.size > 0
-                          ? t("Cancel")
-                          : t("Select all")
-                        : undefined
-                    }
-                  >
-                    {!isMobile &&
-                      (selectedIds.size > 0 ? t("Cancel") : t("Select all"))}
-                  </Button>
+                      )}
+                    </ActionIcon>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="default"
+                      leftSection={
+                        selectedIds.size > 0 ? (
+                          <IconX size={14} />
+                        ) : (
+                          <IconSquareCheck size={14} />
+                        )
+                      }
+                      onClick={selectedIds.size > 0 ? exitSelectionMode : selectAll}
+                      disabled={selectedIds.size === 0 && filteredItems.length === 0}
+                    >
+                      {selectedIds.size > 0 ? t("Cancel") : t("Select all")}
+                    </Button>
+                  )}
                   {selectedIds.size > 0 && (
                     <Button
                       size="xs"
@@ -754,30 +774,49 @@ export default function GalleryModal({
                 </>
               )}
               {uploading && (
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconX size={14} />}
-                  onClick={cancelUpload}
-                  aria-label={isMobile ? t("Cancel") : undefined}
-                >
-                  {!isMobile && t("Cancel")}
-                </Button>
+                isMobile ? (
+                  <ActionIcon
+                    size="input-xs"
+                    variant="default"
+                    onClick={cancelUpload}
+                    aria-label={t("Cancel")}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconX size={14} />}
+                    onClick={cancelUpload}
+                  >
+                    {t("Cancel")}
+                  </Button>
+                )
               )}
               {canManageGallery && (
                 <>
-                  <Button
-                    size="xs"
-                    leftSection={<IconUpload size={14} />}
-                    onClick={() => inputRef.current?.click()}
-                    loading={uploading}
-                    disabled={uploading}
-                    aria-label={isMobile && !uploading ? t("Upload images") : undefined}
-                  >
-                    {uploading
-                      ? `${progress.done}/${progress.total}`
-                      : !isMobile && t("Upload images")}
-                  </Button>
+                  {isMobile && !uploading ? (
+                    <ActionIcon
+                      size="input-xs"
+                      onClick={() => inputRef.current?.click()}
+                      aria-label={t("Upload images")}
+                    >
+                      <IconUpload size={14} />
+                    </ActionIcon>
+                  ) : (
+                    <Button
+                      size="xs"
+                      leftSection={<IconUpload size={14} />}
+                      onClick={() => inputRef.current?.click()}
+                      loading={uploading}
+                      disabled={uploading}
+                    >
+                      {uploading
+                        ? `${progress.done}/${progress.total}`
+                        : t("Upload images")}
+                    </Button>
+                  )}
                   <input
                     ref={inputRef}
                     type="file"
