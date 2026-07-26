@@ -317,29 +317,11 @@ export default function GalleryModal({
       files = files.slice(0, maxBulkFiles);
     }
 
-    // Duplicate check only covers images already loaded on the client
-    // (the pages fetched so far), not the entire workspace if there are
-    // more pages beyond what's currently loaded.
-    const existing = new Set(allItems.map((i) => `${i.fileName}:${i.fileSize}`));
     const toUpload: File[] = [];
-    let skipped = 0;
 
     for (const file of files) {
       if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) continue;
-      const key = `${file.name}:${file.size}`;
-      if (existing.has(key)) {
-        skipped++;
-        continue;
-      }
-      existing.add(key);
       toUpload.push(file);
-    }
-
-    if (skipped > 0) {
-      notifications.show({
-        color: "gray",
-        message: t("{{count}} duplicate images skipped", { count: skipped }),
-      });
     }
 
     if (toUpload.length === 0) return;
