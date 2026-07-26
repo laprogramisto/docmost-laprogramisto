@@ -180,7 +180,12 @@
           ]
         }
       ],
-      "^.+\\.(t|j)sx?$": "ts-jest"
+      "^.+\\.(t|j)sx?$": [
+        "ts-jest",
+        {
+          "isolatedModules": true
+        }
+      ]
     },
     "transformIgnorePatterns": [
       "/node_modules/(?!(\\.pnpm/)?(nanoid|uuid|image-dimensions|marked|happy-dom|@sindresorhus[+/][\\w-]+|escape-string-regexp|p-limit|yocto-queue)(@|/))"
