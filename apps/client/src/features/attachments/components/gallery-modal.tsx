@@ -39,11 +39,23 @@ import {
 } from "@/features/attachments/services";
 import { uploadFile } from "@/features/page/services/page-service.ts";
 import { getFileUrl } from "@/lib/config.ts";
+import { downloadFile } from "@/lib/download-file.ts";
+import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
+import { useSpaceAbility } from "@/features/space/permissions/use-space-ability.ts";
+import {
+  SpaceCaslAction,
+  SpaceCaslSubject,
+} from "@/features/space/permissions/permissions.type.ts";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import classes from "./gallery-modal.module.css";
 
 const MAX_BULK_FILES = 100;
+// Mirrors validImageExtensions in attachment.constants.ts (server-side) —
+// kept in sync manually since the two run in different runtimes. Anything
+// accepted here but rejected server-side would be a confusing dead end for
+// the user (file picked, upload attempted, then a server error).
+const ALLOWED_COVER_MIME_TYPES = ["image/jpeg", "image/png"];
 const UPLOAD_CONCURRENCY = 5;
 const DELETE_CONCURRENCY = 5;
 
@@ -74,21 +86,6 @@ async function runWithConcurrency<T>(
   await Promise.all(runners);
 }
 
-function downloadFile(url: string, fileName: string) {
-  fetch(url, { credentials: "include" })
-    .then((res) => res.blob())
-    .then((blob) => {
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = fileName;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(blobUrl);
-    });
-}
 
 export default function GalleryModal({
   opened,
@@ -99,6 +96,18 @@ export default function GalleryModal({
 }: GalleryModalProps) {
   const { t } = useTranslation();
   const isMobile = useMediaQuery("(max-width: 47.99em)");
+  // Scoped to the Covers tab only: bulk upload, select, delete and rename
+  // there act on the whole space's shared gallery, matching the
+  // SpaceCaslAction.Manage/SpaceCaslSubject.Page guard the server already
+  // enforces for those same actions. The Upload tab is deliberately left
+  // alone — it applies a cover to one specific page and is already gated
+  // by that page's own edit permission before this modal ever opens.
+  const { data: space } = useSpaceQuery(spaceId);
+  const spaceAbility = useSpaceAbility(space?.membership?.permissions);
+  const canManageGallery = spaceAbility.can(
+    SpaceCaslAction.Manage,
+    SpaceCaslSubject.Page,
+  );
   // Passed to useIntersection as `root`. A plain useRef wouldn't work here:
   // its .current is still null on the render where this container first
   // mounts, so the observer would be created against the wrong root (or
@@ -155,7 +164,7 @@ export default function GalleryModal({
   // toggles selection — there's no "apply as cover" behaviour to conflict
   // with. In the cover-picker context, that only happens once the user
   // explicitly switches into selection mode via the "Select" button.
-  const isSelectionMode = !onSelect || pickerSelectionMode;
+  const isSelectionMode = (!onSelect || pickerSelectionMode) && canManageGallery;
 
   // The button that calls this only appears when selectedIds is empty (see
   // the merged Select all / Cancel control below), so this only ever needs
@@ -255,7 +264,7 @@ export default function GalleryModal({
     let skipped = 0;
 
     for (const file of files) {
-      if (!file.type.includes("image/")) continue;
+      if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) continue;
       const key = `${file.name}:${file.size}`;
       if (existing.has(key)) {
         skipped++;
@@ -268,7 +277,7 @@ export default function GalleryModal({
     if (skipped > 0) {
       notifications.show({
         color: "gray",
-        message: t("{{count}} duplicate image(s) skipped", { count: skipped }),
+        message: t("{{count}} duplicate images skipped", { count: skipped }),
       });
     }
 
@@ -344,7 +353,7 @@ export default function GalleryModal({
 
   const processSingleCoverUpload = async (file?: File) => {
     if (!file || !pageId) return;
-    if (!file.type.includes("image/")) {
+    if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) {
       notifications.show({ color: "red", message: t("Please select an image file") });
       return;
     }
@@ -452,7 +461,7 @@ export default function GalleryModal({
     if (count === 0) return;
 
     modals.openConfirmModal({
-      title: t("Delete {{count}} image(s)?", { count }),
+      title: t("Delete {{count}} images?", { count }),
       children: (
         <Text size="sm">
           {t("This will permanently delete the selected images. This action is irreversible.")}
@@ -519,12 +528,12 @@ export default function GalleryModal({
         <Tabs.Panel
           value="covers"
           pt="md"
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`${classes.panel} ${isDragging ? classes.dropzoneActive : ""}`}
+          onDragOver={canManageGallery ? handleDragOver : undefined}
+          onDragLeave={canManageGallery ? handleDragLeave : undefined}
+          onDrop={canManageGallery ? handleDrop : undefined}
+          className={`${classes.panel} ${isDragging && canManageGallery ? classes.dropzoneActive : ""}`}
         >
-          {isDragging && (
+          {isDragging && canManageGallery && (
             <Box className={classes.dropzoneOverlay}>
               <Text size="sm" fw={500}>
                 {t("Drop images to upload")}
@@ -542,7 +551,7 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" wrap="nowrap" className={classes.toolbarActions}>
-              {onSelect && !pickerSelectionMode && (
+              {onSelect && !pickerSelectionMode && canManageGallery && (
                 <Button
                   size="xs"
                   variant="default"
@@ -594,7 +603,7 @@ export default function GalleryModal({
                       loading={bulkDeleting}
                       aria-label={
                         isMobile
-                          ? t("Delete {{count}} image(s)", { count: selectedIds.size })
+                          ? t("Delete {{count}} images", { count: selectedIds.size })
                           : undefined
                       }
                     >
@@ -618,26 +627,30 @@ export default function GalleryModal({
                   {!isMobile && t("Cancel")}
                 </Button>
               )}
-              <Button
-                size="xs"
-                leftSection={<IconUpload size={14} />}
-                onClick={() => inputRef.current?.click()}
-                loading={uploading}
-                disabled={uploading}
-                aria-label={isMobile && !uploading ? t("Upload images") : undefined}
-              >
-                {uploading
-                  ? `${progress.done}/${progress.total}`
-                  : !isMobile && t("Upload images")}
-              </Button>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                style={{ display: "none" }}
-                onChange={handleBulkUpload}
-              />
+              {canManageGallery && (
+                <>
+                  <Button
+                    size="xs"
+                    leftSection={<IconUpload size={14} />}
+                    onClick={() => inputRef.current?.click()}
+                    loading={uploading}
+                    disabled={uploading}
+                    aria-label={isMobile && !uploading ? t("Upload images") : undefined}
+                  >
+                    {uploading
+                      ? `${progress.done}/${progress.total}`
+                      : !isMobile && t("Upload images")}
+                  </Button>
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={handleBulkUpload}
+                  />
+                </>
+              )}
             </Group>
           </Group>
 
@@ -674,8 +687,10 @@ export default function GalleryModal({
                           handleItemClick(attachment.id, index, e.shiftKey);
                           return;
                         }
-                        onSelect?.(url);
-                        onClose();
+                        if (onSelect) {
+                          onSelect(url);
+                          onClose();
+                        }
                       }}
                     >
                       <Box className={classes.thumbWrapper}>
@@ -697,22 +712,32 @@ export default function GalleryModal({
                             color="dark"
                             onClick={(e) => {
                               e.stopPropagation();
-                              downloadFile(getFileUrl(url), attachment.fileName);
+                              downloadFile(
+                                getFileUrl(url),
+                                attachment.fileName,
+                              ).catch(() =>
+                                notifications.show({
+                                  color: "red",
+                                  message: t("Failed to download image"),
+                                }),
+                              );
                             }}
                           >
                             <IconDownload size={12} />
                           </ActionIcon>
-                          <ActionIcon
-                            size="sm"
-                            variant="filled"
-                            color="red"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(attachment.id);
-                            }}
-                          >
-                            <IconTrash size={12} />
-                          </ActionIcon>
+                          {canManageGallery && (
+                            <ActionIcon
+                              size="sm"
+                              variant="filled"
+                              color="red"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(attachment.id);
+                              }}
+                            >
+                              <IconTrash size={12} />
+                            </ActionIcon>
+                          )}
                         </Group>
                       </Box>
 
@@ -751,14 +776,16 @@ export default function GalleryModal({
                           <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
                             {attachment.fileName}
                           </Text>
-                          <ActionIcon
-                            size="sm"
-                            variant="subtle"
-                            className={classes.editButton}
-                            onClick={() => startEditing(attachment.id, attachment.fileName)}
-                          >
-                            <IconPencil size={12} />
-                          </ActionIcon>
+                          {canManageGallery && (
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              className={classes.editButton}
+                              onClick={() => startEditing(attachment.id, attachment.fileName)}
+                            >
+                              <IconPencil size={12} />
+                            </ActionIcon>
+                          )}
                         </Group>
                       )}
                     </Card>
@@ -811,7 +838,7 @@ export default function GalleryModal({
               <input
                 ref={uploadTabInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png"
                 style={{ display: "none" }}
                 onChange={handleUploadTabFile}
               />

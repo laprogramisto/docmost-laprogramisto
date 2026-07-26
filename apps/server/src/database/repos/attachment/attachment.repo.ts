@@ -212,28 +212,4 @@ export class AttachmentRepo {
     });
   }
 
-  // Same scoping as getWorkspaceImages (workspace-wide across every space
-  // the user can access, not just one space) — a cover is a shared
-  // workspace asset regardless of which space it was first uploaded under,
-  // so a duplicate upload from an unrelated space should still be caught.
-  // Matches on fileName + fileSize as a lightweight identity check (not a
-  // content hash); good enough for "don't store the same file twice",
-  // not intended as a security boundary.
-  async findExistingCoverAttachment(
-    userId: string,
-    workspaceId: string,
-    fileName: string,
-    fileSize: number,
-  ): Promise<Attachment | undefined> {
-    return this.db
-      .selectFrom('attachments')
-      .select(this.baseFields)
-      .where('workspaceId', '=', workspaceId)
-      .where('spaceId', 'in', this.spaceMemberRepo.getUserSpaceIdsQuery(userId))
-      .where('type', '=', 'cover')
-      .where('fileName', '=', fileName)
-      .where('fileSize', '=', String(fileSize))
-      .where('deletedAt', 'is', null)
-      .executeTakeFirst();
-  }
 }
