@@ -321,7 +321,7 @@ export default function GalleryModal({
   // it fail later against the server's own limit with a generic error.
   const validateFileBeforeUpload = (
     file: File,
-  ): { ok: true } | { ok: false; reason: string } => {
+  ): { ok: boolean; reason?: string } => {
     if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) {
       return {
         ok: false,
