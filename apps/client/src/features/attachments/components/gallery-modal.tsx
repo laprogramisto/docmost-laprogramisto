@@ -182,10 +182,16 @@ export default function GalleryModal({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Only relevant when onSelect is set (cover-picker context): lets the user
-  // switch from "click applies as cover" to "click toggles selection", so
-  // bulk delete/download stays reachable even while picking a cover.
-  const [pickerSelectionMode, setPickerSelectionMode] = useState(false);
+  // Explicit selection mode, entered only via the "Select" button — in
+  // both the standalone Gallery (no onSelect) and the cover-picker
+  // context (onSelect set). Previously the standalone case skipped this
+  // and was permanently "in selection mode" the moment the modal opened
+  // (since a plain click had no other job to do there), which meant a
+  // single click on any image immediately multi-selected it with no
+  // "Select" button ever having been shown — inconsistent with the picker
+  // context, where the same click applies that image as the cover until
+  // you explicitly opt into selecting.
+  const [selectionMode, setSelectionMode] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -202,11 +208,7 @@ export default function GalleryModal({
   // own name rather than renaming every downstream reference to it.
   const filteredItems = allItems;
 
-  // In the standalone gallery (no onSelect), clicking a thumbnail always
-  // toggles selection — there's no "apply as cover" behaviour to conflict
-  // with. In the cover-picker context, that only happens once the user
-  // explicitly switches into selection mode via the "Select" button.
-  const isSelectionMode = (!onSelect || pickerSelectionMode) && canDeleteFromGallery;
+  const isSelectionMode = selectionMode && canDeleteFromGallery;
 
   // The button that calls this only appears when selectedIds is empty (see
   // the merged Select all / Cancel control below), so this only ever needs
@@ -217,7 +219,29 @@ export default function GalleryModal({
 
   const exitSelectionMode = () => {
     setSelectedIds(new Set());
-    setPickerSelectionMode(false);
+    setSelectionMode(false);
+  };
+
+  // Closing mid-bulk-upload would unmount this component while several
+  // uploadLibraryImage requests are still in flight — those requests
+  // still complete server-side (the files really do get saved), but
+  // nothing is left around to call invalidate() once they resolve, since
+  // the whole closure this effect lives in is gone. The uploaded files
+  // then only become visible the next time the Gallery happens to be
+  // reopened and refetches. Blocking close while uploading is in progress
+  // avoids that gap entirely; cancelUpload (already exposed via the
+  // Cancel button) remains the correct way to stop early.
+  const handleClose = () => {
+    if (uploading) {
+      notifications.show({
+        color: "yellow",
+        message: t(
+          "Please wait for the upload to finish, or cancel it, before closing.",
+        ),
+      });
+      return;
+    }
+    onClose();
   };
 
   // Escape, two levels:
@@ -236,8 +260,7 @@ export default function GalleryModal({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
 
-      const hasSelectionStateToExit =
-        selectedIds.size > 0 || (Boolean(onSelect) && pickerSelectionMode);
+      const hasSelectionStateToExit = selectedIds.size > 0 || selectionMode;
 
       if (isSelectionMode && hasSelectionStateToExit) {
         e.stopPropagation();
@@ -246,12 +269,12 @@ export default function GalleryModal({
         return;
       }
 
-      onClose();
+      handleClose();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [opened, isSelectionMode, selectedIds, onSelect, pickerSelectionMode, onClose]);
+  }, [opened, isSelectionMode, selectedIds, selectionMode, uploading]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -542,7 +565,7 @@ export default function GalleryModal({
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={handleClose}
       title={t("Gallery")}
       size="90%"
       centered={false}
@@ -587,12 +610,12 @@ export default function GalleryModal({
             />
 
             <Group gap="xs" className={classes.toolbarActions}>
-              {onSelect && !pickerSelectionMode && canDeleteFromGallery && (
+              {!isSelectionMode && canDeleteFromGallery && (
                 isMobile ? (
                   <ActionIcon
                     size="input-xs"
                     variant="default"
-                    onClick={() => setPickerSelectionMode(true)}
+                    onClick={() => setSelectionMode(true)}
                     aria-label={t("Select")}
                   >
                     <IconSquareCheck size={14} />
@@ -602,7 +625,7 @@ export default function GalleryModal({
                     size="xs"
                     variant="default"
                     leftSection={<IconSquareCheck size={14} />}
-                    onClick={() => setPickerSelectionMode(true)}
+                    onClick={() => setSelectionMode(true)}
                   >
                     {t("Select")}
                   </Button>
@@ -757,7 +780,9 @@ export default function GalleryModal({
                       radius="sm"
                       className={classes.card}
                       data-selected={isSelected || undefined}
-                      style={{ cursor: "pointer" }}
+                      style={{
+                        cursor: isSelectionMode || onSelect ? "pointer" : "default",
+                      }}
                       onClick={(e) => {
                         if (isSelectionMode) {
                           handleItemClick(attachment.id, index, e.shiftKey);
