@@ -4,6 +4,7 @@ import {
   AvatarIconType,
   IAttachment,
 } from "@/features/attachments/types/attachment.types.ts";
+import { IPagination } from "@/lib/types.ts";
 
 async function compressAndResizeIcon(
   file: File,
@@ -107,7 +108,7 @@ export async function removeWorkspaceIcon(): Promise<void> {
 
 export async function getWorkspaceImages(
   pagination?: { limit?: number; cursor?: string; query?: string },
-): Promise<import("@/lib/types.ts").IPagination<IAttachment>> {
+): Promise<IPagination<IAttachment>> {
   const req = await api.post("/attachments/list-images", pagination);
   return req.data;
 }
@@ -157,6 +158,10 @@ export async function deleteWorkspaceImage(attachmentId: string): Promise<void> 
   await api.post("/attachments/delete-image", { attachmentId });
 }
 
+// fileName here is a display name only (no extension) — the server
+// re-appends the attachment's original extension itself (see
+// AttachmentController.renameImage) so the stored value stays a complete
+// filename, exactly like every other attachment type.
 export async function renameWorkspaceImage(
   attachmentId: string,
   fileName: string,

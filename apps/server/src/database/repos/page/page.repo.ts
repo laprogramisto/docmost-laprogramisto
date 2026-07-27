@@ -31,6 +31,7 @@ export class PageRepo {
     'title',
     'icon',
     'coverPhoto',
+    'coverAttachmentId',
     'coverPhotoPosition',
     'coverPhotoPositionX',
     'coverPhotoSize',

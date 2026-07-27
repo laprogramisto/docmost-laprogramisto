@@ -62,7 +62,6 @@ import { Feature } from "@/ee/features";
 import { ErrorBoundary } from "react-error-boundary";
 import GalleryModal from "@/features/attachments/components/gallery-modal.tsx";
 
-
 export function SpaceSidebar() {
   const { t } = useTranslation();
   const location = useLocation();
@@ -254,7 +253,6 @@ export function SpaceSidebar() {
         onClose={closeGallery}
         spaceId={space?.id}
       />
-      
     </>
   );
 }

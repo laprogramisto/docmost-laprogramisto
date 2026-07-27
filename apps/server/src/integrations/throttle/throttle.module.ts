@@ -18,9 +18,12 @@ import Redis from 'ioredis';
           throttlers: [
             { name: AUTH_THROTTLER, ttl: 60_000, limit: 10 },
             { name: AI_CHAT_THROTTLER, ttl: 60_000, limit: 25 },
-            // Generous enough to cover a legitimate 100-image bulk
-            // upload/delete in one go (with headroom for normal browsing),
-            // while still blocking scripted hammering of these endpoints.
+            // Default (150/min) is overridden per-workspace via
+            // GalleryThrottlerGuard, which reads
+            // workspace.settings.gallery.rateLimitPerMinute — see Settings
+            // > Gallery. This static value is only the fallback used when
+            // that setting isn't configured, or when workspaceId can't be
+            // resolved (fail-safe, never fail-open).
             { name: GALLERY_THROTTLER, ttl: 60_000, limit: 150 },
           ],
           errorMessage: 'Too many requests',

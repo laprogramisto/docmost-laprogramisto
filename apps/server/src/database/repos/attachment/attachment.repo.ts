@@ -8,14 +8,18 @@ import {
   UpdatableAttachment,
 } from '@docmost/db/types/entity.types';
 import { AttachmentType } from '../../../core/attachment/attachment.constants';
-import { executeWithCursorPagination } from '@docmost/db/pagination/cursor-pagination';
-import { SpaceMemberRepo } from '@docmost/db/repos/space/space-member.repo';
+import { PaginationOptions } from '@docmost/db/pagination/pagination-options';
+import {
+  CursorPaginationResult,
+  executeWithCursorPagination,
+} from '@docmost/db/pagination/cursor-pagination';
+import { SpaceMemberRepo } from '../space/space-member.repo';
 
 @Injectable()
 export class AttachmentRepo {
   constructor(
     @InjectKysely() private readonly db: KyselyDB,
-    private spaceMemberRepo: SpaceMemberRepo,
+    private readonly spaceMemberRepo: SpaceMemberRepo,
   ) {}
 
   private baseFields: Array<keyof Attachment> = [
@@ -31,11 +35,11 @@ export class AttachmentRepo {
     'spaceId',
     'aiChatId',
     'workspaceId',
+    'thumbnailPath',
+    'thumbnailSize',
     'createdAt',
     'updatedAt',
     'deletedAt',
-    'thumbnailPath',
-    'thumbnailSize',
   ];
 
   async findById(
@@ -185,44 +189,47 @@ export class AttachmentRepo {
       .executeTakeFirst();
   }
 
+  // Shared Gallery: every Cover-type image the requesting user has access
+  // to across the workspace (i.e. uploaded to, or used as a cover in, any
+  // space they're a member of). Scoped through spaceMemberRepo the same
+  // way findBySpaceId/space listings already are — no cross-space leakage.
   async getWorkspaceImages(
     userId: string,
     workspaceId: string,
-    pagination: { limit?: number; cursor?: string; beforeCursor?: string },
-    query?: string,
-  ) {
-    let dbQuery = this.db
+    pagination: PaginationOptions,
+  ): Promise<CursorPaginationResult<Attachment>> {
+    const accessibleSpaceIds =
+      this.spaceMemberRepo.getUserSpaceIdsQuery(userId);
+
+    let query = this.db
       .selectFrom('attachments')
       .select(this.baseFields)
       .where('workspaceId', '=', workspaceId)
-      .where('spaceId', 'in', this.spaceMemberRepo.getUserSpaceIdsQuery(userId))
-      .where('type', '=', 'cover')
-      .where('deletedAt', 'is', null);
+      .where('type', '=', AttachmentType.Cover)
+      .where('deletedAt', 'is', null)
+      .where('spaceId', 'in', accessibleSpaceIds);
 
-    if (query) {
-      dbQuery = dbQuery.where('fileName', 'ilike', `%${query}%`);
+    if (pagination.query) {
+      query = query.where('fileName', 'ilike', `%${pagination.query}%`);
     }
 
-    return executeWithCursorPagination(dbQuery, {
+    return executeWithCursorPagination(query, {
       perPage: pagination.limit,
       cursor: pagination.cursor,
       beforeCursor: pagination.beforeCursor,
-      fields: [
-        { expression: 'createdAt', direction: 'desc' },
-        { expression: 'id', direction: 'desc' },
-      ],
-      parseCursor: (cursor) => ({
-        createdAt: new Date(cursor.createdAt),
-        id: cursor.id,
-      }),
+      fields: [{ expression: 'id', direction: 'desc' }],
+      parseCursor: (cursor) => ({ id: cursor.id }),
     });
   }
 
-  // Used to enforce that deleting a cover from the Gallery requires
-  // Manage/Page rights in every space actually affected, not just the
-  // space it was originally uploaded through — deleteImage() clears
-  // coverPhoto workspace-wide, so a permission check scoped to a single
-  // space would let a user break pages in spaces they can't even see.
+  // Which spaces currently use this attachment as a page cover — checked
+  // via the real FK (pages.cover_attachment_id) rather than pattern
+  // matching coverPhoto as a string, so this stays correct regardless of
+  // URL format and can use the pages_cover_attachment_id_idx index instead
+  // of a full table scan. workspaceId is an extra safety filter (this is
+  // always known at the call site, via @AuthWorkspace()) rather than
+  // something the query strictly needs — cover_attachment_id already only
+  // ever points at an attachment in the same workspace.
   async getSpaceIdsUsingAttachment(
     attachmentId: string,
     workspaceId: string,
@@ -231,11 +238,11 @@ export class AttachmentRepo {
       .selectFrom('pages')
       .select('spaceId')
       .distinct()
+      .where('coverAttachmentId', '=', attachmentId)
       .where('workspaceId', '=', workspaceId)
-      .where('coverPhoto', 'like', `%/${attachmentId}/%`)
+      .where('deletedAt', 'is', null)
       .execute();
 
-    return rows.map((r) => r.spaceId);
+    return rows.map((row) => row.spaceId);
   }
-
 }

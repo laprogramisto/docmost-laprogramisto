@@ -33,6 +33,11 @@ const MemoizedTitleEditor = React.memo(TitleEditor);
 const MemoizedPageEditor = React.memo(PageEditor);
 const MemoizedFixedToolbar = React.memo(FixedToolbar);
 const MemoizedDeletedPageBanner = React.memo(DeletedPageBanner);
+// Same treatment as the other components above: FullEditor re-renders on
+// every keystroke in the title/content editors, and PageCover's own props
+// don't change nearly that often — without this it would re-render (and
+// re-run its effects) on every one of those unrelated re-renders too.
+const MemoizedPageCover = React.memo(PageCover);
 
 type PageUser = {
   id: string;
@@ -110,7 +115,7 @@ export function FullEditor({
         <MemoizedFixedToolbar />
       )}
       <MemoizedDeletedPageBanner slugId={slugId} />
-      <PageCover
+      <MemoizedPageCover
         pageId={pageId}
         coverPhoto={coverPhoto}
         coverPhotoPosition={coverPhotoPosition}

@@ -18,7 +18,9 @@ import { getFileUrl } from "@/lib/config.ts";
 import { downloadFile } from "@/lib/download-file.ts";
 import toolbarClasses from "../common/toolbar-menu.module.css";
 import classes from "./page-cover.module.css";
-import GalleryModal from "@/features/attachments/components/gallery-modal.tsx";
+import GalleryModal, {
+  GallerySelection,
+} from "@/features/attachments/components/gallery-modal.tsx";
 
 // Below this many pixels of movement, a mousedown+mouseup is treated as a
 // plain click (do nothing) rather than the start of a drag-to-reposition
@@ -51,6 +53,16 @@ export function PageCover({
   const { mutateAsync: updatePageAsync } = useUpdatePageMutation();
   const [pickerOpened, setPickerOpened] = useState(false);
 
+  // The server is the source of truth for coverPhoto (it's derived from
+  // coverAttachmentId — see PageService.resolveCoverAttachment and
+  // IPageInput). This just mirrors the selected Gallery image's URL
+  // immediately so the cover renders without waiting on the mutation's
+  // round trip; the next query refetch replaces it with the server's
+  // value regardless.
+  const [optimisticCoverPhoto, setOptimisticCoverPhoto] = useState<
+    string | null
+  >(null);
+
   const [position, setPosition] = useState<number>(coverPhotoPosition ?? 50);
   const [positionX, setPositionX] = useState<number>(coverPhotoPositionX ?? 50);
   const [isRepositioning, setIsRepositioning] = useState(false);
@@ -78,6 +90,17 @@ export function PageCover({
   useEffect(() => {
     setAltValue(coverPhotoAlt ?? "");
   }, [coverPhotoAlt]);
+
+  // Once the real coverPhoto prop reflects the selection (server confirmed
+  // it), drop the optimistic value so subsequent renders trust the prop
+  // again — otherwise a later legitimate change to coverPhoto (e.g. via
+  // Gallery deletion clearing it) would be masked by a stale optimistic
+  // value forever.
+  useEffect(() => {
+    setOptimisticCoverPhoto(null);
+  }, [coverPhoto]);
+
+  const displayedCoverPhoto = optimisticCoverPhoto ?? coverPhoto;
 
   useEffect(() => {
     if (!editable) return;
@@ -155,10 +178,16 @@ export function PageCover({
     };
   };
 
-  const handleSelectCover = (url: string) => {
+  // Only ever sends coverAttachmentId to the server — never a URL. The
+  // server resolves it against the Gallery (must exist, must be a Cover
+  // attachment, must belong to this workspace) and derives coverPhoto's
+  // URL itself; see PageService.resolveCoverAttachment. `url` here is used
+  // purely for the optimistic render below, not sent anywhere.
+  const handleSelectCover = ({ attachmentId, url }: GallerySelection) => {
+    setOptimisticCoverPhoto(url);
     updatePageAsync({
       pageId,
-      coverPhoto: url,
+      coverAttachmentId: attachmentId,
       coverPhotoPosition: 50,
       coverPhotoPositionX: 50,
     });
@@ -167,19 +196,21 @@ export function PageCover({
   };
 
   const handleRemove = async () => {
+    setOptimisticCoverPhoto(null);
     await updatePageAsync({
       pageId,
-      coverPhoto: null,
+      coverAttachmentId: null,
       coverPhotoPosition: null,
       coverPhotoPositionX: null,
     });
   };
 
   const handleDownload = async () => {
+    if (!displayedCoverPhoto) return;
     try {
       await downloadFile(
-        getFileUrl(coverPhoto),
-        coverPhoto.split("/").pop() || "cover",
+        getFileUrl(displayedCoverPhoto),
+        displayedCoverPhoto.split("/").pop() || "cover",
       );
     } catch {
       notifications.show({
@@ -246,7 +277,7 @@ export function PageCover({
     });
   };
 
-  if (!coverPhoto) {
+  if (!displayedCoverPhoto) {
     if (!editable) return null;
     return (
       <>
@@ -282,7 +313,7 @@ export function PageCover({
         }}
       >
         <img
-          src={getFileUrl(coverPhoto)}
+          src={getFileUrl(displayedCoverPhoto)}
           alt={coverPhotoAlt ?? ""}
           className={classes.coverImage}
           style={{

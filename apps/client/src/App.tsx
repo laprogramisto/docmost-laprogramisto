@@ -9,6 +9,7 @@ import WorkspaceSettings from "@/pages/settings/workspace/workspace-settings";
 import Groups from "@/pages/settings/group/groups";
 import GroupInfo from "./pages/settings/group/group-info";
 import Spaces from "@/pages/settings/space/spaces.tsx";
+import GallerySettings from "@/pages/settings/gallery/gallery-settings.tsx";
 import { Error404 } from "@/components/ui/error-404.tsx";
 import AccountPreferences from "@/pages/settings/account/account-preferences.tsx";
 import SpaceHome from "@/pages/space/space-home.tsx";
@@ -47,7 +48,6 @@ import FavoritesPage from "@/pages/favorites/favorites-page";
 import AiChat from "@/ee/ai-chat/pages/ai-chat.tsx";
 import VerifyEmail from "@/ee/pages/verify-email.tsx";
 import LabelPage from "@/pages/label/label-page";
-import GallerySettings from "@/pages/settings/gallery/gallery-settings.tsx";
 
 export default function App() {
   const { t } = useTranslation();

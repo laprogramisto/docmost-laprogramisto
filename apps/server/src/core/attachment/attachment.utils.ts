@@ -95,6 +95,8 @@ export function getAttachmentFolderPath(
       return `${workspaceId}/files`;
     case AttachmentType.Chat:
       return `${workspaceId}/chat-files`;
+    case AttachmentType.Cover:
+      return `${workspaceId}/covers`;
     default:
       return `${workspaceId}/files`;
   }

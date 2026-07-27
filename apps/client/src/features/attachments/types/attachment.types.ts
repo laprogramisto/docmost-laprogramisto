@@ -10,6 +10,8 @@ export interface IAttachment {
   pageId: string | null;
   spaceId: string | null;
   workspaceId: string;
+  thumbnailPath: string | null;
+  thumbnailSize: number | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -26,4 +28,5 @@ export enum AttachmentType {
   WORKSPACE_ICON = "workspace-icon",
   SPACE_ICON = "space-icon",
   FILE = "file",
+  COVER = "cover",
 }

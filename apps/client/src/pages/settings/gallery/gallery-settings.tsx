@@ -11,6 +11,32 @@ import {
   DEFAULT_GALLERY_SETTINGS,
 } from "@/features/attachments/queries/attachment-query.ts";
 
+// Row layout follows the rest of the Settings area's inline convention —
+// label + description on the left, a compact control on the right (see
+// AllowMemberTemplates / TrashRetention) — rather than a label stacked
+// above a full-width input.
+function SettingRow({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Group justify="space-between" wrap="nowrap" gap="xl">
+      <div>
+        <Text size="md">{label}</Text>
+        <Text size="sm" c="dimmed">
+          {description}
+        </Text>
+      </div>
+      {children}
+    </Group>
+  );
+}
+
 export default function GallerySettings() {
   const { t } = useTranslation();
   const { data: gallerySettings } = useGallerySettingsQuery();
@@ -69,15 +95,19 @@ export default function GallerySettings() {
           {t("Gallery")} - {getAppName()}
         </title>
       </Helmet>
-      <SettingsTitle title={t("Gallery settings")} />
+      <SettingsTitle title={t("Gallery")} />
 
-      <Stack gap="lg" maw={420}>
-        <div>
-          <Text size="sm" fw={500}>
-            {t("Max files per bulk upload")}
-          </Text>
+      <Stack gap="lg" maw={520}>
+        <SettingRow
+          label={t("Max files per bulk upload")}
+          description={t(
+            "Limits how many images can be selected at once when bulk-uploading to the shared gallery.",
+          )}
+        >
           <NumberInput
-            mt={4}
+            w={90}
+            size="sm"
+            hideControls={false}
             min={1}
             max={500}
             value={maxBulkUploadFiles}
@@ -85,14 +115,17 @@ export default function GallerySettings() {
               setMaxBulkUploadFiles(typeof v === "number" ? v : 1)
             }
           />
-        </div>
+        </SettingRow>
 
-        <div>
-          <Text size="sm" fw={500}>
-            {t("Images per page")}
-          </Text>
+        <SettingRow
+          label={t("Images per page")}
+          description={t(
+            "Number of images shown per page in the gallery grid before loading more.",
+          )}
+        >
           <NumberInput
-            mt={4}
+            w={90}
+            size="sm"
             min={6}
             max={200}
             value={defaultPageSize}
@@ -100,14 +133,17 @@ export default function GallerySettings() {
               setDefaultPageSize(typeof v === "number" ? v : 6)
             }
           />
-        </div>
+        </SettingRow>
 
-        <div>
-          <Text size="sm" fw={500}>
-            {t("Requests per minute")}
-          </Text>
+        <SettingRow
+          label={t("Requests per minute")}
+          description={t(
+            "Rate limit applied to gallery uploads, listing, and management actions, per user.",
+          )}
+        >
           <NumberInput
-            mt={4}
+            w={90}
+            size="sm"
             min={10}
             max={1000}
             value={rateLimitPerMinute}
@@ -115,26 +151,21 @@ export default function GallerySettings() {
               setRateLimitPerMinute(typeof v === "number" ? v : 10)
             }
           />
-        </div>
+        </SettingRow>
 
-        <Group justify="space-between" wrap="nowrap">
-          <div>
-            <Text size="sm" fw={500}>
-              {t("Restrict gallery deletion to owners")}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {t(
-                "When enabled, only workspace owners can delete images from the shared Gallery. When disabled, anyone with edit rights in the relevant space can.",
-              )}
-            </Text>
-          </div>
+        <SettingRow
+          label={t("Restrict gallery deletion to owners")}
+          description={t(
+            "When enabled, only workspace owners can delete images from the shared gallery. When disabled, anyone with edit rights in the relevant space can.",
+          )}
+        >
           <Switch
             checked={restrictDeleteToOwners}
             onChange={(e) =>
               setRestrictDeleteToOwners(e.currentTarget.checked)
             }
           />
-        </Group>
+        </SettingRow>
 
         <Group justify="flex-end">
           <Button

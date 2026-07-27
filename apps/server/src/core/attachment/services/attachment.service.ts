@@ -1,4 +1,3 @@
-import * as path from 'path';
 import {
   BadRequestException,
   Injectable,
@@ -53,7 +52,14 @@ export class AttachmentService {
     attachmentId?: string;
     type?: AttachmentType;
   }) {
-    const { filePromise, thumbnailFilePromise, pageId, spaceId, userId, workspaceId } = opts;
+    const {
+      filePromise,
+      thumbnailFilePromise,
+      pageId,
+      spaceId,
+      userId,
+      workspaceId,
+    } = opts;
     const isCover = opts.type === AttachmentType.Cover;
 
     // Covers are buffered rather than streamed — same buffered pattern
@@ -114,11 +120,15 @@ export class AttachmentService {
       attachmentId = uuid7();
     }
 
-    const filePath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
+    // Covers get their own folder (see getAttachmentFolderPath), same as
+    // avatars/workspace-logos/space-logos each do — everything else keeps
+    // landing under .../files, unchanged.
+    const folderType = isCover ? AttachmentType.Cover : AttachmentType.File;
+    const filePath = `${getAttachmentFolderPath(folderType, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
 
     let thumbnailPath: string | null = null;
     if (preparedThumbnail) {
-      thumbnailPath = `${getAttachmentFolderPath(AttachmentType.File, workspaceId)}/${attachmentId}/thumbnail_${preparedThumbnail.fileName}`;
+      thumbnailPath = `${getAttachmentFolderPath(folderType, workspaceId)}/${attachmentId}/thumbnail_${preparedThumbnail.fileName}`;
       await this.uploadToDrive(thumbnailPath, preparedThumbnail.buffer);
     }
 
@@ -285,7 +295,6 @@ export class AttachmentService {
     }
   }
 
-
   async uploadToDrive(filePath: string, fileContent: Buffer | Readable) {
     try {
       await this.storageService.upload(filePath, fileContent);
@@ -326,7 +335,15 @@ export class AttachmentService {
         id: attachmentId,
         type: type,
         filePath: filePath,
-        fileName: path.basename(preparedFile.fileName, preparedFile.fileExtension),
+        // Kept as the full sanitized filename (with extension), same as
+        // every other attachment type — do not strip the extension here.
+        // The Gallery only wants an extension-less label in its UI; that's
+        // handled at display/rename time client-side (see
+        // gallery-modal.tsx), not by changing what's stored. Every other
+        // consumer of attachment.fileName (Content-Disposition downloads,
+        // Draw.io/Excalidraw file matching, AI chat, search, ee/base file
+        // cells...) still expects the extension to be there.
+        fileName: preparedFile.fileName,
         fileSize: preparedFile.fileSize,
         mimeType: preparedFile.mimeType,
         fileExt: preparedFile.fileExtension,
@@ -514,6 +531,14 @@ export class AttachmentService {
     await this.workspaceRepo.updateWorkspace({ logo: null }, workspace.id);
   }
 
+  // Deleting an image from the shared Gallery must never leave a page
+  // pointing at a cover that no longer exists. Every page currently using
+  // this attachment (found via the real FK, not a URL pattern match — see
+  // AttachmentRepo.getSpaceIdsUsingAttachment for the same lookup used by
+  // the cross-space permission check) has its cover fully cleared: all
+  // five cover_* columns, not just coverPhoto/position/size — leaving
+  // coverAttachmentId, coverPhotoPositionX or coverPhotoAlt behind would
+  // orphan them against a row that's about to be deleted.
   async deleteImage(attachmentId: string, workspaceId: string) {
     const attachment = await this.attachmentRepo.findById(attachmentId);
 
@@ -521,13 +546,18 @@ export class AttachmentService {
       throw new NotFoundException('File not found');
     }
 
-    // Clear this cover from any page currently using it, so removing it
-    // from the library never leaves a broken image on a page.
     await this.db
       .updateTable('pages')
-      .set({ coverPhoto: null, coverPhotoPosition: null, coverPhotoSize: null })
+      .set({
+        coverAttachmentId: null,
+        coverPhoto: null,
+        coverPhotoPosition: null,
+        coverPhotoPositionX: null,
+        coverPhotoSize: null,
+        coverPhotoAlt: null,
+      })
       .where('workspaceId', '=', workspaceId)
-      .where('coverPhoto', 'like', `%/${attachmentId}/%`)
+      .where('coverAttachmentId', '=', attachmentId)
       .execute();
 
     await this.storageService.delete(attachment.filePath);

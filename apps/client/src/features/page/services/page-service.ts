@@ -193,6 +193,10 @@ export async function getAttachmentInfo(
   return req.data;
 }
 
+// `type` and `thumbnail` are only used by the Gallery's cover upload flow
+// (see gallery-modal.tsx) — every other existing caller of this function
+// omits them, which keeps type undefined (defaults to a regular file
+// attachment server-side) and skips the thumbnail form field entirely.
 export async function uploadFile(
   file: File,
   pageId: string,

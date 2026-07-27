@@ -11,7 +11,9 @@ export class RenameImageDto {
 
   // 255 mirrors the cap applied to uploaded file names in
   // attachment.utils.ts (`sanitizedFilename.slice(0, 255)`), so a rename
-  // cannot produce a name that an upload would never have created.
+  // cannot produce a name that an upload would never have created. This
+  // is the display name only (no extension) — the server re-appends the
+  // attachment's original extension, see AttachmentController.renameImage.
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)

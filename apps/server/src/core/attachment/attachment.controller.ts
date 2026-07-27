@@ -50,10 +50,7 @@ import {
 import WorkspaceAbilityFactory from '../casl/abilities/workspace-ability.factory';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
-import {
-  DeleteImageDto,
-  RenameImageDto,
-} from './dto/gallery-image.dto';
+import { DeleteImageDto, RenameImageDto } from './dto/gallery-image.dto';
 import { UpdateGallerySettingsDto } from './dto/gallery-settings.dto';
 import { ListGalleryImagesDto } from './dto/gallery-list.dto';
 import { validate as isValidUUID } from 'uuid';
@@ -90,11 +87,23 @@ export class AttachmentController {
     private readonly environmentService: EnvironmentService,
     private readonly tokenService: TokenService,
     private readonly pageAccessService: PageAccessService,
+    private readonly galleryThrottlerGuard: GalleryThrottlerGuard,
     @Inject(AUDIT_SERVICE) private readonly auditService: IAuditService,
   ) {}
 
-  @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
-  @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
+  // Deliberately NOT `@UseGuards(..., GalleryThrottlerGuard)`. This one
+  // endpoint serves both ordinary page file attachments (PDFs, docx,
+  // anything) and Gallery cover uploads, and a decorator can't tell them
+  // apart — the "type" field only becomes known once the multipart body
+  // has been read, inside the handler below. Applying the guard here
+  // would throttle every plain file upload under a policy named
+  // "gallery", not just covers. Instead, `checkGalleryLimit` is called
+  // manually, only in the branch where the upload is actually a cover —
+  // see GalleryThrottlerGuard for why. Every other Gallery-only route
+  // below (list-images, gallery-settings, delete-image, rename-image)
+  // keeps the standard declarative guard, since those never serve
+  // anything but the Gallery.
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('files/upload')
   @UseInterceptors(FileInterceptor)
@@ -144,6 +153,13 @@ export class AttachmentController {
       attachmentTypeField === AttachmentType.Cover
         ? AttachmentType.Cover
         : AttachmentType.File;
+
+    if (attachmentType === AttachmentType.Cover) {
+      // Manual, scoped throttle check — see the class-level comment above
+      // and GalleryThrottlerGuard for the full rationale. Only reached
+      // for cover uploads; plain file attachments never hit this.
+      await this.galleryThrottlerGuard.checkGalleryLimit(req, workspace.id);
+    }
 
     // The gallery only ever displays these in an <img>, and the client-side
     // accept="image/*" filter is trivially bypassed with a direct request,
@@ -269,6 +285,11 @@ export class AttachmentController {
 
         await this.pageAccessService.validateCanView(page, user);
       } else {
+        // Covers can be uploaded straight to the Gallery without ever
+        // being attached to a specific page (pageId is optional for
+        // AttachmentType.Cover) — fall back to a space-level Read check
+        // in that case, same permission the Gallery list itself is
+        // scoped by (AttachmentRepo.getWorkspaceImages).
         const spaceAbility = await this.spaceAbility.createForUser(
           user,
           attachment.spaceId,
@@ -300,7 +321,6 @@ export class AttachmentController {
     @Param('fileId') fileId: string,
     @Param('fileName') fileName?: string,
     @Query('jwt') jwtToken?: string,
-    @Query('variant') variant?: string,
   ) {
     let jwtPayload: JwtAttachmentPayload = null;
     try {
@@ -334,12 +354,7 @@ export class AttachmentController {
     }
 
     try {
-      return await this.sendFileResponse(
-        req,
-        res,
-        this.resolveVariant(attachment, variant),
-        'public',
-      );
+      return await this.sendFileResponse(req, res, attachment, 'public');
     } catch (err) {
       this.logger.error(err);
       throw new NotFoundException('File not found');
@@ -384,7 +399,8 @@ export class AttachmentController {
 
     if (
       !validAttachmentTypes.includes(attachmentType) ||
-      attachmentType === AttachmentType.File
+      attachmentType === AttachmentType.File ||
+      attachmentType === AttachmentType.Cover
     ) {
       throw new BadRequestException('Invalid image attachment type');
     }
@@ -439,7 +455,8 @@ export class AttachmentController {
   ) {
     if (
       !validAttachmentTypes.includes(attachmentType) ||
-      attachmentType === AttachmentType.File
+      attachmentType === AttachmentType.File ||
+      attachmentType === AttachmentType.Cover
     ) {
       throw new BadRequestException('Invalid image attachment type');
     }
@@ -553,6 +570,9 @@ export class AttachmentController {
     }
   }
 
+  // Every route below serves the shared Gallery only, never a mix of
+  // Gallery + unrelated traffic — unlike files/upload above, applying the
+  // guard declaratively here is unambiguous and correct.
   @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
@@ -562,12 +582,12 @@ export class AttachmentController {
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
   ) {
-    return this.attachmentRepo.getWorkspaceImages(
-      user.id,
-      workspace.id,
-      { cursor: dto.cursor, beforeCursor: dto.beforeCursor, limit: dto.limit },
-      dto.query,
-    );
+    return this.attachmentRepo.getWorkspaceImages(user.id, workspace.id, {
+      cursor: dto.cursor,
+      beforeCursor: dto.beforeCursor,
+      limit: dto.limit,
+      query: dto.query,
+    });
   }
 
   @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
@@ -600,6 +620,41 @@ export class AttachmentController {
     return this.attachmentService.updateGallerySettings(workspace.id, dto);
   }
 
+  // Shared by deleteImage and renameImage: every space that would be
+  // affected by a change to this attachment, not just the one it happened
+  // to be uploaded through. deleteImage clears coverPhoto workspace-wide
+  // (attachment.service.ts) and renameImage changes the name shown for
+  // this cover everywhere it's used — a check scoped only to
+  // attachment.spaceId would let a user with edit rights in ONE space
+  // affect pages in OTHER spaces they may have no access to at all.
+  private async assertCanManageGalleryImage(
+    user: User,
+    workspace: Workspace,
+    attachment: Attachment,
+  ): Promise<void> {
+    const affectedSpaceIds = new Set([
+      attachment.spaceId,
+      ...(await this.attachmentRepo.getSpaceIdsUsingAttachment(
+        attachment.id,
+        workspace.id,
+      )),
+    ]);
+
+    for (const spaceId of affectedSpaceIds) {
+      if (!spaceId) continue;
+      const spaceAbility = await this.spaceAbility.createForUser(
+        user,
+        spaceId,
+      );
+      if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
+        // Deliberately the same generic ForbiddenException regardless of
+        // which space blocked the request — never reveal to the caller
+        // that a space they can't see exists.
+        throw new ForbiddenException();
+      }
+    }
+  }
+
   @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
   @SkipThrottle({ [AUTH_THROTTLER]: true, [AI_CHAT_THROTTLER]: true })
   @HttpCode(HttpStatus.OK)
@@ -630,36 +685,7 @@ export class AttachmentController {
         throw new ForbiddenException();
       }
     } else {
-      // deleteImage() clears coverPhoto workspace-wide (see
-      // attachment.service.ts), so a check scoped only to
-      // attachment.spaceId (the space it happened to be uploaded
-      // through) would let a user with edit rights in ONE space break
-      // pages in OTHER spaces they may have no access to at all. Every
-      // space actually using this cover must independently grant
-      // Manage/Page — the attachment's own space is included even if no
-      // page currently uses it there, since that's still where it
-      // "belongs".
-      const affectedSpaceIds = new Set([
-        attachment.spaceId,
-        ...(await this.attachmentRepo.getSpaceIdsUsingAttachment(
-          dto.attachmentId,
-          workspace.id,
-        )),
-      ]);
-
-      for (const spaceId of affectedSpaceIds) {
-        if (!spaceId) continue;
-        const spaceAbility = await this.spaceAbility.createForUser(
-          user,
-          spaceId,
-        );
-        if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
-          // Deliberately the same generic ForbiddenException regardless
-          // of which space blocked the request — never reveal to the
-          // caller that a space they can't see exists.
-          throw new ForbiddenException();
-        }
-      }
+      await this.assertCanManageGalleryImage(user, workspace, attachment);
     }
 
     await this.attachmentService.deleteImage(dto.attachmentId, workspace.id);
@@ -693,22 +719,30 @@ export class AttachmentController {
       throw new NotFoundException('File not found');
     }
 
-    const spaceAbility = await this.spaceAbility.createForUser(user, attachment.spaceId);
-    if (spaceAbility.cannot(SpaceCaslAction.Manage, SpaceCaslSubject.Page)) {
-      throw new ForbiddenException();
-    }
+    // Same cross-space check deleteImage uses (see
+    // assertCanManageGalleryImage above) — previously this only checked
+    // attachment.spaceId (the upload's original space), which let a user
+    // with Manage/Page in that one space rename a cover actually in use
+    // as a page cover in a different space they have no rights in.
+    await this.assertCanManageGalleryImage(user, workspace, attachment);
 
-    // Renames go through the same sanitization as uploads
-    // (attachment.utils.ts) so a cover's stored fileName follows one set of
-    // rules whichever path produced it. Length is capped by the DTO.
+    // dto.fileName is a display name only (no extension — see
+    // gallery-image.dto.ts and gallery-modal.tsx, which strips the
+    // extension before showing the rename field). The attachment's
+    // original extension is re-appended here so the stored fileName stays
+    // a complete, valid filename: Content-Disposition downloads, Draw.io/
+    // Excalidraw file matching, search, and everything else that reads
+    // attachment.fileName still gets one with an extension, exactly like
+    // every other attachment type.
     const trimmedName = sanitizeFileName(dto.fileName).trim();
     if (!trimmedName) {
       throw new BadRequestException('File name is required');
     }
 
+    const newFileName = `${trimmedName}${attachment.fileExt}`;
     const previousName = attachment.fileName;
     const updated = await this.attachmentRepo.updateAttachment(
-      { fileName: trimmedName },
+      { fileName: newFileName },
       dto.attachmentId,
     );
 
@@ -719,7 +753,7 @@ export class AttachmentController {
       spaceId: attachment.spaceId,
       changes: {
         before: { fileName: previousName },
-        after: { fileName: trimmedName },
+        after: { fileName: newFileName },
       },
     });
 

@@ -7,6 +7,7 @@ export interface IPage {
   content: string;
   icon: string;
   coverPhoto: string;
+  coverAttachmentId: string;
   coverPhotoPosition: number;
   coverPhotoPositionX: number;
   coverPhotoSize: string;
@@ -83,16 +84,20 @@ export interface SidebarPagesParams {
   limit?: number;
 }
 
+// coverAttachmentId (not coverPhoto) is what the client is allowed to send
+// — the server resolves it against the Gallery and derives coverPhoto's
+// URL itself (see PageService.resolveCoverAttachment). Pass null to clear
+// the cover, undefined/omit to leave it untouched.
 export interface IPageInput {
   pageId: string;
   title: string;
   parentPageId: string;
   icon: string;
-  coverPhoto: string;
-  coverPhotoPosition: number;
-  coverPhotoPositionX: number;
-  coverPhotoSize: string;
-  coverPhotoAlt: string;
+  coverAttachmentId?: string | null;
+  coverPhotoPosition?: number | null;
+  coverPhotoPositionX?: number | null;
+  coverPhotoSize?: string | null;
+  coverPhotoAlt?: string | null;
   position: string;
   isLocked: boolean;
 }

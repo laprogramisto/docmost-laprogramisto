@@ -98,12 +98,7 @@ const groupedData: DataGroup[] = [
       },
       { label: "Groups", icon: IconUsersGroup, path: "/settings/groups" },
       { label: "Spaces", icon: IconSpaces, path: "/settings/spaces" },
-      {
-        label: "Gallery",
-        icon: IconPhoto,
-        path: "/settings/gallery",
-        role: "admin",
-      },
+      { label: "Gallery", icon: IconPhoto, path: "/settings/gallery" },
       { label: "Public sharing", icon: IconWorld, path: "/settings/sharing" },
       {
         label: "Verified pages",

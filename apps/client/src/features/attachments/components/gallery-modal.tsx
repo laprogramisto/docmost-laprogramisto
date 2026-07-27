@@ -63,12 +63,31 @@ const ALLOWED_COVER_MIME_TYPES = ["image/jpeg", "image/png"];
 const UPLOAD_CONCURRENCY = 5;
 const DELETE_CONCURRENCY = 5;
 
+// What onSelect receives when a cover is picked (from either tab). `url`
+// is provided only so the caller (PageCover) can render the new cover
+// immediately, optimistically — it is never sent back to the server.
+// attachmentId is the only thing that ever reaches the API (see
+// IPageInput.coverAttachmentId / PageService.resolveCoverAttachment); a
+// raw URL is not something the page-update endpoint accepts.
+export interface GallerySelection {
+  attachmentId: string;
+  url: string;
+}
+
+// The Gallery only ever needs to show/edit a name without its extension
+// (see the name row and rename input below) — this never touches what's
+// actually stored server-side. Renaming re-appends the original extension
+// server-side; see AttachmentController.renameImage.
+function stripExtension(fileName: string): string {
+  return fileName.replace(/\.[^./]+$/, "");
+}
+
 interface GalleryModalProps {
   opened: boolean;
   onClose: () => void;
   spaceId: string;
   pageId?: string;
-  onSelect?: (url: string) => void;
+  onSelect?: (selection: GallerySelection) => void;
 }
 
 async function runWithConcurrency<T>(
@@ -374,7 +393,7 @@ export default function GalleryModal({
       const attachment = await uploadFile(file, pageId, undefined, "cover", thumbnail);
       const url = `/api/files/${attachment.id}/${attachment.fileName}`;
       invalidate();
-      onSelect?.(url);
+      onSelect?.({ attachmentId: attachment.id, url });
       onClose();
     } catch (err: any) {
       notifications.show({
@@ -486,9 +505,14 @@ export default function GalleryModal({
     });
   };
 
-  const startEditing = (attachmentId: string, currentName: string) => {
+  // currentFileName is the full stored name (with extension) — the input
+  // is seeded with the extension-less display name (stripExtension) so the
+  // user never has to type or preserve an extension they can't see; the
+  // server re-appends attachment.fileExt when saving (see
+  // AttachmentController.renameImage).
+  const startEditing = (attachmentId: string, currentFileName: string) => {
     setEditingId(attachmentId);
-    setEditingValue(currentName);
+    setEditingValue(stripExtension(currentFileName));
   };
 
   const cancelEditing = () => {
@@ -724,6 +748,7 @@ export default function GalleryModal({
                   const url = `/api/files/${attachment.id}/${attachment.fileName}`;
                   const isSelected = selectedIds.has(attachment.id);
                   const isEditing = editingId === attachment.id;
+                  const displayName = stripExtension(attachment.fileName);
 
                   return (
                     <Card
@@ -739,7 +764,7 @@ export default function GalleryModal({
                           return;
                         }
                         if (onSelect) {
-                          onSelect(url);
+                          onSelect({ attachmentId: attachment.id, url });
                           onClose();
                         }
                       }}
@@ -749,7 +774,7 @@ export default function GalleryModal({
                         <Image
                           src={`${getFileUrl(url)}?variant=thumbnail`}
                           fallbackSrc={getFileUrl(url)}
-                          alt={attachment.fileName}
+                          alt={displayName}
                           radius="sm"
                           h={100}
                           fit="cover"
@@ -826,7 +851,7 @@ export default function GalleryModal({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
-                            {attachment.fileName}
+                            {displayName}
                           </Text>
                           {canManageGallery && (
                             <ActionIcon

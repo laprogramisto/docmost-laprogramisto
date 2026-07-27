@@ -22,6 +22,7 @@ import { generateSlugId } from '../../../common/helpers';
 import { getPageTitle } from '../../../common/helpers';
 import { executeTx } from '@docmost/db/utils';
 import { AttachmentRepo } from '@docmost/db/repos/attachment/attachment.repo';
+import { AttachmentType } from '../../attachment/attachment.constants';
 import { v7 as uuid7 } from 'uuid';
 import {
   createYdocFromJson,
@@ -74,6 +75,49 @@ export class PageService {
     private readonly watcherService: WatcherService,
     private readonly transclusionService: TransclusionService,
   ) {}
+
+  // Resolves a client-supplied coverAttachmentId into the two DB fields
+  // that actually get written: coverAttachmentId (the FK) and coverPhoto
+  // (a derived, server-built URL). This is the only place either field is
+  // set — CreatePageDto/UpdatePageDto never accept a raw coverPhoto URL
+  // from the client, precisely so a page's cover can't be pointed at an
+  // arbitrary external image or bypass the upload/permission checks the
+  // Gallery already enforces.
+  //
+  // Returns undefined for both fields when coverAttachmentId itself is
+  // undefined (field not part of this update at all — leave whatever is
+  // already on the page untouched), and null for both when it's explicitly
+  // null (client is clearing the cover).
+  private async resolveCoverAttachment(
+    coverAttachmentId: string | null | undefined,
+    workspaceId: string,
+  ): Promise<{
+    coverAttachmentId?: string | null;
+    coverPhoto?: string | null;
+  }> {
+    if (coverAttachmentId === undefined) {
+      return {};
+    }
+
+    if (coverAttachmentId === null) {
+      return { coverAttachmentId: null, coverPhoto: null };
+    }
+
+    const attachment = await this.attachmentRepo.findById(coverAttachmentId);
+
+    if (
+      !attachment ||
+      attachment.workspaceId !== workspaceId ||
+      attachment.type !== AttachmentType.Cover
+    ) {
+      throw new BadRequestException('Invalid cover image');
+    }
+
+    return {
+      coverAttachmentId: attachment.id,
+      coverPhoto: `/files/${attachment.id}/${attachment.fileName}`,
+    };
+  }
 
   async findById(
     pageId: string,
@@ -129,6 +173,11 @@ export class PageService {
       ydoc = createYdocFromJson(prosemirrorJson);
     }
 
+    const cover = await this.resolveCoverAttachment(
+      createPageDto.coverAttachmentId,
+      workspaceId,
+    );
+
     const page = await this.pageRepo.insertPage({
       slugId: generateSlugId(),
       title: createPageDto.title,
@@ -137,7 +186,7 @@ export class PageService {
         parentPageId,
       ),
       icon: createPageDto.icon,
-      coverPhoto: createPageDto.coverPhoto,
+      ...cover,
       coverPhotoPosition: createPageDto.coverPhotoPosition,
       coverPhotoPositionX: createPageDto.coverPhotoPositionX,
       coverPhotoSize: createPageDto.coverPhotoSize,
@@ -229,11 +278,16 @@ export class PageService {
     contributors.add(user.id);
     const contributorIds = Array.from(contributors);
 
+    const cover = await this.resolveCoverAttachment(
+      updatePageDto.coverAttachmentId,
+      page.workspaceId,
+    );
+
     await this.pageRepo.updatePage(
       {
         title: updatePageDto.title,
         icon: updatePageDto.icon,
-        coverPhoto: updatePageDto.coverPhoto,
+        ...cover,
         coverPhotoPosition: updatePageDto.coverPhotoPosition,
         coverPhotoPositionX: updatePageDto.coverPhotoPositionX,
         coverPhotoSize: updatePageDto.coverPhotoSize,

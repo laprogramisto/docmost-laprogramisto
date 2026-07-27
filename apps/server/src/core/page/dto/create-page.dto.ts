@@ -23,9 +23,14 @@ export class CreatePageDto {
   @IsString()
   icon?: string;
 
+  // The id of an existing Attachment (type: "cover") to use as this page's
+  // cover — never a raw URL. PageService resolves this server-side (must
+  // exist, must be type Cover, must belong to the same workspace) and
+  // derives the public coverPhoto URL itself; a client can never set
+  // coverPhoto directly. See PageService.resolveCoverAttachment.
   @IsOptional()
-  @IsString()
-  coverPhoto?: string;
+  @IsUUID()
+  coverAttachmentId?: string;
 
   @IsOptional()
   @IsInt()
