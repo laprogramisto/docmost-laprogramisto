@@ -1,5 +1,9 @@
-import { Inject, Injectable, ThrottlerException } from '@nestjs/common';
-import { ThrottlerRequest, ThrottlerStorage } from '@nestjs/throttler';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  ThrottlerException,
+  ThrottlerRequest,
+  ThrottlerStorage,
+} from '@nestjs/throttler';
 import { WorkspaceRepo } from '@docmost/db/repos/workspace/workspace.repo';
 import { UserThrottlerGuard } from './user-throttler.guard';
 import { GALLERY_THROTTLER } from './throttler-names';

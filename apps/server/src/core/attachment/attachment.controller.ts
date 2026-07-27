@@ -582,12 +582,7 @@ export class AttachmentController {
     @AuthUser() user: User,
     @AuthWorkspace() workspace: Workspace,
   ) {
-    return this.attachmentRepo.getWorkspaceImages(user.id, workspace.id, {
-      cursor: dto.cursor,
-      beforeCursor: dto.beforeCursor,
-      limit: dto.limit,
-      query: dto.query,
-    });
+    return this.attachmentRepo.getWorkspaceImages(user.id, workspace.id, dto);
   }
 
   @UseGuards(JwtAuthGuard, GalleryThrottlerGuard)
