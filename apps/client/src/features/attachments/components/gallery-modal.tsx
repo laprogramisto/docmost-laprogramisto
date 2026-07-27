@@ -15,6 +15,7 @@ import {
   Tabs,
   ActionIcon,
   LoadingOverlay,
+  Progress,
 } from "@mantine/core";
 import {
   IconUpload,
@@ -38,7 +39,9 @@ import {
   renameWorkspaceImage,
 } from "@/features/attachments/services";
 import { uploadFile } from "@/features/page/services/page-service.ts";
-import { getFileUrl } from "@/lib/config.ts";
+import { getFileUrl, getFileUploadSizeLimit } from "@/lib/config.ts";
+import { formatBytes } from "@/lib";
+import { IAttachment } from "@/features/attachments/types/attachment.types.ts";
 import { downloadFile } from "@/lib/download-file.ts";
 import { generateThumbnail } from "@/lib/generate-thumbnail.ts";
 import { useSpaceQuery } from "@/features/space/queries/space-query.ts";
@@ -60,6 +63,12 @@ import classes from "./gallery-modal.module.css";
 // accepted here but rejected server-side would be a confusing dead end for
 // the user (file picked, upload attempted, then a server error).
 const ALLOWED_COVER_MIME_TYPES = ["image/jpeg", "image/png"];
+// Same limit the server enforces (environmentService.getFileUploadSizeLimit,
+// already exposed to the client via lib/config.ts) — checked here too so a
+// too-large file is rejected immediately, with a clear reason, rather than
+// only failing later against the server's own check.
+const maxUploadBytes = getFileUploadSizeLimit();
+const maxUploadSizeLabel = formatBytes(maxUploadBytes);
 const UPLOAD_CONCURRENCY = 5;
 const DELETE_CONCURRENCY = 5;
 
@@ -306,25 +315,92 @@ export default function GalleryModal({
 
   const clearSelection = () => setSelectedIds(new Set());
 
+  // Checked client-side before ever starting the network request, so a
+  // rejection is immediate and carries a specific reason — rather than
+  // silently skipping the file (the previous MIME-only filter) or letting
+  // it fail later against the server's own limit with a generic error.
+  const validateFileBeforeUpload = (
+    file: File,
+  ): { ok: true } | { ok: false; reason: string } => {
+    if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) {
+      return {
+        ok: false,
+        reason: t("Unsupported file type ({{type}})", {
+          type: file.type || t("unknown"),
+        }),
+      };
+    }
+    if (file.size > maxUploadBytes) {
+      return {
+        ok: false,
+        reason: t("File is too large (max {{max}})", {
+          max: maxUploadSizeLabel,
+        }),
+      };
+    }
+    return { ok: true };
+  };
+
+  // Inserts a newly-uploaded attachment straight into the first page of
+  // the cached list, so it appears in the grid the instant its upload
+  // resolves — rather than waiting for the whole batch to finish and
+  // invalidating once at the end. A plain invalidate() per file would
+  // also work, but would mean a full extra request per file just to
+  // fetch back something the response already handed us.
+  const insertUploadedItem = (attachment: IAttachment) => {
+    // Skipped while a search filter is active: the new file's name has no
+    // reason to match whatever the user typed, so forcing it into a
+    // filtered view would misrepresent what that filter actually matches.
+    // invalidate() at the end of the batch (or the user clearing the
+    // search) is what surfaces it in that case.
+    if (debouncedSearchQuery) return;
+
+    queryClient.setQueryData(
+      ["workspace-images", ""],
+      (data: any) => {
+        if (!data) return data;
+        const [firstPage, ...restPages] = data.pages;
+        if (!firstPage) return data;
+        return {
+          ...data,
+          pages: [
+            { ...firstPage, items: [attachment, ...firstPage.items] },
+            ...restPages,
+          ],
+        };
+      },
+    );
+  };
+
   const processFiles = async (fileList: File[]) => {
-    let files = fileList;
+    const files = fileList;
     if (files.length === 0) return;
 
     if (files.length > maxBulkFiles) {
       notifications.show({
-        color: "yellow",
+        color: "red",
         message: t(
-          "You can upload up to {{max}} images at once. The rest of your selection was ignored — please upload them in a separate batch.",
-          { max: maxBulkFiles },
+          "You selected {{count}} images, but only {{max}} can be uploaded at once. Please select {{max}} or fewer and try again.",
+          { count: files.length, max: maxBulkFiles },
         ),
       });
-      files = files.slice(0, maxBulkFiles);
+      return;
     }
 
     const toUpload: File[] = [];
 
     for (const file of files) {
-      if (!ALLOWED_COVER_MIME_TYPES.includes(file.type)) continue;
+      const result = validateFileBeforeUpload(file);
+      if (!result.ok) {
+        notifications.show({
+          color: "red",
+          message: t("Skipped {{name}}: {{reason}}", {
+            name: file.name,
+            reason: result.reason,
+          }),
+        });
+        continue;
+      }
       toUpload.push(file);
     }
 
@@ -351,6 +427,7 @@ export default function GalleryModal({
           if (!attachment?.id) {
             throw new Error("Empty response");
           }
+          insertUploadedItem(attachment);
         } catch (err: any) {
           // A deliberate cancellation isn't a failure worth a notification
           // per file — the "cancelled" state is already communicated once
@@ -370,6 +447,11 @@ export default function GalleryModal({
 
     uploadAbortControllerRef.current = null;
     setUploading(false);
+    // Reconciles the optimistic inserts above against the server's real
+    // ordering/pagination (e.g. two files finishing in a different order
+    // than they were queued) — inserts already made the grid update
+    // immediately per file, this just corrects any drift once the whole
+    // batch has settled.
     invalidate();
   };
 
@@ -731,11 +813,13 @@ export default function GalleryModal({
                       size="xs"
                       leftSection={<IconUpload size={14} />}
                       onClick={() => inputRef.current?.click()}
-                      loading={uploading}
                       disabled={uploading}
                     >
                       {uploading
-                        ? `${progress.done}/${progress.total}`
+                        ? t("Uploading {{done}}/{{total}}", {
+                            done: progress.done,
+                            total: progress.total,
+                          })
                         : t("Upload images")}
                     </Button>
                   )}
@@ -751,6 +835,25 @@ export default function GalleryModal({
               )}
             </Group>
           </Group>
+
+          {uploading && (
+            <Stack gap={4} mb="sm">
+              <Text size="xs" c="dimmed">
+                {t("Uploading {{done}} of {{total}} images…", {
+                  done: progress.done,
+                  total: progress.total,
+                })}
+              </Text>
+              <Progress
+                value={
+                  progress.total > 0
+                    ? (progress.done / progress.total) * 100
+                    : 0
+                }
+                size="sm"
+              />
+            </Stack>
+          )}
 
           {isLoading && (
             <Center py="xl">

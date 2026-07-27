@@ -132,6 +132,16 @@ export async function updateGallerySettings(
   return req.data;
 }
 
+// Two independent calls, never a single request carrying two files.
+// @fastify/multipart requires each file part of a request to be fully
+// consumed before the next one is read — fine for exactly one file per
+// request (this endpoint's native shape), unreliable once a second part
+// (the thumbnail) rides along under upload concurrency (see
+// attachment.controller.ts for the full story). The thumbnail call is a
+// second, ordinary req.file() upload, distinguished only by
+// thumbnailForAttachmentId — the server links it back to the cover
+// attachment the first call just created, rather than creating a second
+// attachment for it.
 export async function uploadLibraryImage(
   file: File,
   spaceId: string,
@@ -141,17 +151,40 @@ export async function uploadLibraryImage(
   const formData = new FormData();
   formData.append("spaceId", spaceId);
   formData.append("type", "cover");
-  if (thumbnail) {
-    formData.append("thumbnail", thumbnail, "thumbnail.jpg");
-  }
   formData.append("file", file);
 
-  const req = await api.post("/files/upload", formData, {
+  const req = await api.post<IAttachment>("/files/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
     signal,
   });
 
-  return req as unknown as IAttachment;
+  const attachment = req as unknown as IAttachment;
+
+  if (thumbnail && attachment?.id) {
+    // A failure here is deliberately non-fatal to the overall upload: the
+    // cover itself already exists and is fully usable without a
+    // thumbnail (the Gallery just falls back to the full-size image for
+    // that one item — see resolveVariant server-side). Swallowing the
+    // error here means the caller doesn't need special-case handling for
+    // "the cover worked but its thumbnail didn't".
+    try {
+      const thumbFormData = new FormData();
+      thumbFormData.append("spaceId", spaceId);
+      thumbFormData.append("type", "cover");
+      thumbFormData.append("thumbnailForAttachmentId", attachment.id);
+      thumbFormData.append("file", thumbnail, "thumbnail.jpg");
+
+      await api.post("/files/upload", thumbFormData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        signal,
+      });
+    } catch {
+      // Thumbnail failed to attach; the cover upload itself already
+      // succeeded above and is returned regardless.
+    }
+  }
+
+  return attachment;
 }
 
 export async function deleteWorkspaceImage(attachmentId: string): Promise<void> {

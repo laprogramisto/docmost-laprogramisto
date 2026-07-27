@@ -195,8 +195,12 @@ export async function getAttachmentInfo(
 
 // `type` and `thumbnail` are only used by the Gallery's cover upload flow
 // (see gallery-modal.tsx) — every other existing caller of this function
-// omits them, which keeps type undefined (defaults to a regular file
-// attachment server-side) and skips the thumbnail form field entirely.
+// omits them entirely, unaffected by anything below.
+//
+// The thumbnail, when present, is sent as its own separate req.file()
+// call after the main upload succeeds, rather than riding alongside it in
+// the same multipart request — see attachment.controller.ts for why a
+// single request can't reliably carry two file parts under concurrency.
 export async function uploadFile(
   file: File,
   pageId: string,
@@ -212,9 +216,6 @@ export async function uploadFile(
   if (type) {
     formData.append("type", type);
   }
-  if (thumbnail) {
-    formData.append("thumbnail", thumbnail, "thumbnail.jpg");
-  }
   formData.append("file", file);
 
   const req = await api.post<IAttachment>("/files/upload", formData, {
@@ -223,5 +224,25 @@ export async function uploadFile(
     },
   });
 
-  return req as unknown as IAttachment;
+  const attachment = req as unknown as IAttachment;
+
+  if (thumbnail && attachment?.id) {
+    try {
+      const thumbFormData = new FormData();
+      thumbFormData.append("pageId", pageId);
+      if (type) {
+        thumbFormData.append("type", type);
+      }
+      thumbFormData.append("thumbnailForAttachmentId", attachment.id);
+      thumbFormData.append("file", thumbnail, "thumbnail.jpg");
+
+      await api.post("/files/upload", thumbFormData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    } catch {
+      // Non-fatal — the cover itself already uploaded successfully above.
+    }
+  }
+
+  return attachment;
 }

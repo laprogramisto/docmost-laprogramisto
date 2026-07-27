@@ -44,7 +44,6 @@ export class AttachmentService {
 
   async uploadFile(opts: {
     filePromise: Promise<MultipartFile>;
-    thumbnailFilePromise?: Promise<MultipartFile>;
     pageId?: string;
     userId: string;
     spaceId: string;
@@ -52,45 +51,17 @@ export class AttachmentService {
     attachmentId?: string;
     type?: AttachmentType;
   }) {
-    const {
-      filePromise,
-      thumbnailFilePromise,
-      pageId,
-      spaceId,
-      userId,
-      workspaceId,
-    } = opts;
+    const { filePromise, pageId, spaceId, userId, workspaceId } = opts;
     const isCover = opts.type === AttachmentType.Cover;
 
-    // Covers are buffered rather than streamed — same buffered pattern
-    // uploadImage() already uses below for avatars/icons, not a new upload
-    // path — so the content can be checked before anything reaches storage.
-    // Regular file attachments keep the existing stream + byte-counting
-    // path untouched.
+    // Streamed for every attachment type, covers included — same as
+    // upstream docmost's original behavior for this endpoint. A cover's
+    // thumbnail is never read here: it arrives via its own, separate
+    // call to this same method (routed through attachThumbnail below),
+    // never as a second part of this request.
     const preparedFile: PreparedFile = await prepareFile(filePromise, {
-      skipBuffer: !isCover,
+      skipBuffer: true,
     });
-
-    if (isCover) {
-      // The extension is already checked in attachment.controller.ts;
-      // this additionally confirms the bytes themselves look like one of
-      // the allowed image formats, since a renamed non-image file would
-      // otherwise pass an extension-only check.
-      validateImageSignature(preparedFile.buffer);
-    }
-
-    // The thumbnail is generated client-side (canvas), sent alongside the
-    // main file only for covers. Its own signature is checked the same way
-    // as the main file — it travels over the network like any other
-    // upload and shouldn't be trusted just because it came from "our own"
-    // upload flow.
-    let preparedThumbnail: PreparedFile | null = null;
-    if (isCover && thumbnailFilePromise) {
-      preparedThumbnail = await prepareFile(thumbnailFilePromise, {
-        skipBuffer: false,
-      });
-      validateImageSignature(preparedThumbnail.buffer);
-    }
 
     let isUpdate = false;
     let attachmentId = null;
@@ -126,25 +97,11 @@ export class AttachmentService {
     const folderType = isCover ? AttachmentType.Cover : AttachmentType.File;
     const filePath = `${getAttachmentFolderPath(folderType, workspaceId)}/${attachmentId}/${preparedFile.fileName}`;
 
-    let thumbnailPath: string | null = null;
-    if (preparedThumbnail) {
-      thumbnailPath = `${getAttachmentFolderPath(folderType, workspaceId)}/${attachmentId}/thumbnail_${preparedThumbnail.fileName}`;
-      await this.uploadToDrive(thumbnailPath, preparedThumbnail.buffer);
-    }
-
-    if (isCover) {
-      await this.uploadToDrive(filePath, preparedFile.buffer);
-      // fileSize was already set by prepareFile when it read the buffer.
-    } else {
-      const { stream, getBytesRead } = createByteCountingStream(
-        preparedFile.multiPartFile.file,
-      );
-
-      await this.uploadToDrive(filePath, stream);
-
-      // Update fileSize from the consumed stream
-      preparedFile.fileSize = getBytesRead();
-    }
+    const { stream, getBytesRead } = createByteCountingStream(
+      preparedFile.multiPartFile.file,
+    );
+    await this.uploadToDrive(filePath, stream);
+    preparedFile.fileSize = getBytesRead();
 
     let attachment: Attachment = null;
     try {
@@ -166,8 +123,6 @@ export class AttachmentService {
           spaceId,
           workspaceId,
           pageId,
-          thumbnailPath,
-          thumbnailSize: preparedThumbnail?.buffer?.length ?? null,
         });
       }
 
@@ -193,6 +148,56 @@ export class AttachmentService {
     }
 
     return attachment;
+  }
+
+  // The follow-up call for a cover's thumbnail: a small (client-generated,
+  // canvas-based JPEG) file, buffered in full — unlike the main upload
+  // above, buffering this one is fine, it's always small — validated by
+  // content signature, uploaded to storage, then patched onto the
+  // already-existing cover attachment via thumbnailPath/thumbnailSize.
+  // Never creates a new attachment row.
+  //
+  // spaceId here is the space the controller already validated the
+  // caller's permissions against (validateCanEdit / Manage-Page ability,
+  // same checks the main upload went through) — checking the target
+  // attachment actually belongs to that space, not just the same
+  // workspace, is what stops a forged targetAttachmentId from pointing at
+  // someone else's cover in a different space of the same workspace,
+  // where the caller may have no rights at all.
+  async attachThumbnail(opts: {
+    filePromise: Promise<MultipartFile>;
+    targetAttachmentId: string;
+    workspaceId: string;
+    spaceId: string;
+  }): Promise<Attachment> {
+    const { filePromise, targetAttachmentId, workspaceId, spaceId } = opts;
+
+    const target = await this.attachmentRepo.findById(targetAttachmentId);
+    if (
+      !target ||
+      target.workspaceId !== workspaceId ||
+      target.spaceId !== spaceId ||
+      target.type !== AttachmentType.Cover
+    ) {
+      throw new NotFoundException('Cover attachment not found');
+    }
+
+    const preparedThumbnail: PreparedFile = await prepareFile(filePromise, {
+      skipBuffer: false,
+    });
+    validateFileType(preparedThumbnail.fileExtension, validImageExtensions);
+    validateImageSignature(preparedThumbnail.buffer);
+
+    const thumbnailPath = `${getAttachmentFolderPath(AttachmentType.Cover, workspaceId)}/${targetAttachmentId}/thumbnail_${preparedThumbnail.fileName}`;
+    await this.uploadToDrive(thumbnailPath, preparedThumbnail.buffer);
+
+    return this.attachmentRepo.updateAttachment(
+      {
+        thumbnailPath,
+        thumbnailSize: preparedThumbnail.buffer.length,
+      },
+      targetAttachmentId,
+    );
   }
 
   async uploadImage(

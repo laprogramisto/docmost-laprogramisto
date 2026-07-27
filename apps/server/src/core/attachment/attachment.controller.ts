@@ -115,25 +115,24 @@ export class AttachmentController {
   ) {
     const maxFileSize = bytes(this.environmentService.getFileUploadSizeLimit());
 
+    // req.file() (singular) — unchanged from upstream docmost. A cover's
+    // thumbnail is never sent as a second part of this same request: it's
+    // uploaded via its own, separate call to this same endpoint, carrying
+    // thumbnailForAttachmentId to link it back to the already-created
+    // cover attachment afterwards (see the branch below and
+    // AttachmentService.attachThumbnail). Two concurrent single-file
+    // requests are no different, from Fastify's perspective, than any
+    // other two unrelated uploads happening at the same time — unlike
+    // asking one request to carry two file parts, which is the part
+    // @fastify/multipart doesn't handle well under concurrency (each part
+    // must be fully drained before the next is read, and a bulk upload
+    // sending several two-part requests in parallel made that ordering
+    // unreliable in practice: ERR_STREAM_PREMATURE_CLOSE).
     let file: any = null;
-    let thumbnailFile: any = null;
     try {
-      // req.files() (plural) rather than req.file(): this endpoint now
-      // accepts an optional second, named file part ("thumbnail") in the
-      // same request for covers, generated client-side. Every part not
-      // named "thumbnail" is treated as the main file — same role `file`
-      // always played before this change, so everything below this block
-      // that reads from `file` is untouched.
-      const parts = req.files({
-        limits: { fileSize: maxFileSize, fields: 3, files: 2 },
+      file = await req.file({
+        limits: { fileSize: maxFileSize, fields: 4, files: 1 },
       });
-      for await (const part of parts) {
-        if (part.fieldname === 'thumbnail') {
-          thumbnailFile = part;
-        } else {
-          file = part;
-        }
-      }
     } catch (err: any) {
       this.logger.error(err.message);
       if (err?.statusCode === 413) {
@@ -153,11 +152,18 @@ export class AttachmentController {
       attachmentTypeField === AttachmentType.Cover
         ? AttachmentType.Cover
         : AttachmentType.File;
+    const thumbnailForAttachmentId =
+      file.fields?.thumbnailForAttachmentId?.value;
+
+    if (thumbnailForAttachmentId && !isValidUUID(thumbnailForAttachmentId)) {
+      throw new BadRequestException('Invalid attachment id');
+    }
 
     if (attachmentType === AttachmentType.Cover) {
       // Manual, scoped throttle check — see the class-level comment above
       // and GalleryThrottlerGuard for the full rationale. Only reached
-      // for cover uploads; plain file attachments never hit this.
+      // for cover uploads (and their thumbnail follow-up call, also typed
+      // Cover); plain file attachments never hit this.
       await this.galleryThrottlerGuard.checkGalleryLimit(req, workspace.id);
     }
 
@@ -204,6 +210,26 @@ export class AttachmentController {
       }
     }
 
+    // A thumbnail follow-up call never creates a new attachment — it
+    // patches thumbnailPath/thumbnailSize onto the cover attachment the
+    // first call already created, then returns early.
+    if (thumbnailForAttachmentId) {
+      try {
+        const updated = await this.attachmentService.attachThumbnail({
+          filePromise: file,
+          targetAttachmentId: thumbnailForAttachmentId,
+          workspaceId: workspace.id,
+          spaceId,
+        });
+        return res.send(updated);
+      } catch (err: any) {
+        this.logger.error(err);
+        throw err instanceof BadRequestException || err instanceof NotFoundException
+          ? err
+          : new BadRequestException('Failed to attach thumbnail');
+      }
+    }
+
     const attachmentId = file.fields?.attachmentId?.value;
     if (attachmentId && !isValidUUID(attachmentId)) {
       throw new BadRequestException('Invalid attachment id');
@@ -212,7 +238,6 @@ export class AttachmentController {
     try {
       const fileResponse = await this.attachmentService.uploadFile({
         filePromise: file,
-        thumbnailFilePromise: thumbnailFile,
         pageId: pageId,
         spaceId: spaceId,
         userId: user.id,
