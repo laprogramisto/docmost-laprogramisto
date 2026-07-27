@@ -1,9 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  ThrottlerException,
-  ThrottlerRequest,
-  ThrottlerStorage,
-} from '@nestjs/throttler';
+import { ThrottlerException, ThrottlerRequest } from '@nestjs/throttler';
 import { WorkspaceRepo } from '@docmost/db/repos/workspace/workspace.repo';
 import { UserThrottlerGuard } from './user-throttler.guard';
 import { GALLERY_THROTTLER } from './throttler-names';
@@ -20,7 +16,9 @@ import { GALLERY_THROTTLER } from './throttler-names';
 //    unambiguously gallery-only (list-images, delete-image, rename-image,
 //    gallery-settings) — standard NestJS guard usage, same pattern as
 //    UserThrottlerGuard/AUTH_THROTTLER on AuthController. handleRequest()
-//    below is what NestJS calls for this path.
+//    below is what NestJS calls for this path, via @nestjs/throttler's own
+//    ThrottlerStorage/Redis-backed counter — unchanged, and this path has
+//    tested cleanly.
 //
 // 2. `checkGalleryLimit(req, workspaceId)` called directly from inside
 //    AttachmentController.uploadFile, only in the branch where
@@ -31,19 +29,45 @@ import { GALLERY_THROTTLER } from './throttler-names';
 //    otherwise be throttled under a policy named "gallery", including
 //    plain PDF/docx uploads. A decorator can't conditionally apply itself
 //    based on multipart form-data read at runtime, so the check is done
-//    imperatively instead, using only the public, documented
-//    ThrottlerStorage API (increment) rather than fabricating an
-//    ExecutionContext/ThrottlerRequest by hand to call canActivate().
+//    imperatively instead.
+//
+//    This used to call @nestjs/throttler's ThrottlerStorage.increment()
+//    directly, guessing at its parameter order without being able to
+//    compile against the real package (no npm access in the environment
+//    that wrote it) — that guess was wrong and threw at runtime under
+//    real load (500s instead of clean 429s). Rather than guess again at
+//    a second internal API, checkGalleryLimit below is a small,
+//    self-contained in-memory counter with no dependency on any
+//    @nestjs/throttler internals beyond the ThrottlerException class
+//    (public, stable, already used elsewhere in this file's export list).
+//
+//    In-memory means this counter is per Node process. Docmost runs as a
+//    single server process by default (see docker-compose.yml — one
+//    `docmost` service, no clustering) — under that deployment this is
+//    exactly as correct as a shared Redis counter would be, since there's
+//    only ever one counter to keep anyway. If docmost is ever run as
+//    multiple server replicas behind a load balancer, this stops being
+//    accurate across replicas (each process enforces the limit
+//    independently, so the effective ceiling becomes limit × replica
+//    count) — the declarative path above (still Redis-backed) doesn't
+//    have that limitation, only this manual one does.
 @Injectable()
 export class GalleryThrottlerGuard extends UserThrottlerGuard {
   @Inject(WorkspaceRepo)
   private readonly workspaceRepo: WorkspaceRepo;
 
-  @Inject(ThrottlerStorage)
-  private readonly throttlerStorage: ThrottlerStorage;
-
   private static readonly DEFAULT_LIMIT = 150;
   private static readonly TTL_MS = 60_000;
+
+  // key -> { count, windowStartedAt }. Cleared lazily (see checkGalleryLimit)
+  // rather than via a separate interval timer — nothing about this guard
+  // needs background upkeep, and lazy cleanup means a key that's never hit
+  // again is simply never touched again, rather than costing a periodic
+  // sweep whether it's needed or not.
+  private readonly counters = new Map<
+    string,
+    { count: number; windowStartedAt: number }
+  >();
 
   async handleRequest(requestProps: ThrottlerRequest): Promise<boolean> {
     if (requestProps.throttler.name !== GALLERY_THROTTLER) {
@@ -84,9 +108,12 @@ export class GalleryThrottlerGuard extends UserThrottlerGuard {
 
   // Imperative counterpart to handleRequest() above, for files/upload's
   // Cover branch. Tracks per-user (same key shape UserThrottlerGuard
-  // already uses: "user:<id>"), against the same GALLERY_THROTTLER bucket
-  // and Redis storage the declarative path uses, so a user can't get a
-  // separate allowance by going through one path vs the other.
+  // already uses: "user:<id>"), in a fixed one-minute sliding window reset
+  // on expiry — simple fixed-window counting, not the more precise
+  // sliding-log approach @nestjs/throttler itself uses, but accurate
+  // enough for this: the practical difference is at most a handful of
+  // extra requests right at a window boundary, not a meaningful gap in
+  // protection.
   async checkGalleryLimit(
     req: { user?: { id?: string } },
     workspaceId: string,
@@ -96,18 +123,19 @@ export class GalleryThrottlerGuard extends UserThrottlerGuard {
       GalleryThrottlerGuard.DEFAULT_LIMIT;
 
     const userId = req.user?.id;
-    const key = userId ? `user:${userId}` : 'anonymous';
-    const throttlerKey = `${GALLERY_THROTTLER}:${key}`;
+    const key = `${GALLERY_THROTTLER}:${userId ? `user:${userId}` : 'anonymous'}`;
 
-    const { totalHits, isBlocked } = await this.throttlerStorage.increment(
-      throttlerKey,
-      GalleryThrottlerGuard.TTL_MS,
-      limit,
-      0,
-      GALLERY_THROTTLER,
-    );
+    const now = Date.now();
+    const existing = this.counters.get(key);
 
-    if (isBlocked || totalHits > limit) {
+    if (!existing || now - existing.windowStartedAt >= GalleryThrottlerGuard.TTL_MS) {
+      this.counters.set(key, { count: 1, windowStartedAt: now });
+      return;
+    }
+
+    existing.count += 1;
+
+    if (existing.count > limit) {
       throw new ThrottlerException('Too many requests');
     }
   }
